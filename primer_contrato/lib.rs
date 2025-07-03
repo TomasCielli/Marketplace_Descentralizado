@@ -3,6 +3,7 @@
 #[ink::contract]
 mod primer_contrato {
 
+    /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
     #[ink(storage)]
