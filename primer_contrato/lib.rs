@@ -1,30 +1,109 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
+//IMPORTANTE: PERSISTENCIA DE DATOS
+/* 
+    1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
+    2) Los datos simples solo persitirán si son variables del struct con la etiqueta #[ink(Storage)]
+    3) Solo las estructuras StorageVec y Mapping persistirán su información. 
+    4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
+        Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
+*/
+
 #[ink::contract]
 mod primer_contrato {
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    use ink::storage::Mapping;
+    use ink::prelude::collections::HashMap; //No deberiamos usar nunca un HashMap. No me compila, más fácil clavar un Vec. 
+    use ink::storage::StorageVec;
+    use ink::prelude::vec::Vec;
+    use ink::prelude::string::String;
+    
     #[ink(storage)]
     pub struct PrimerContrato {
-        /// Stores a single `bool` value on the storage.
-        value: bool,
+        usuarios: Mapping<u32, Usuario>, //Se persiste la información de los usuarios.
+        historial_publicacioes: StorageVec<Publicacion>, //Se persisten las publicaciones realizadas.
+        historial_productos: Mapping<u32,Producto>, //Se persisten los productos de mis sistema. Team de que debería ser un Vec. 
+        value: bool, //Si borras esto se rompe todo. En serio, fijate. (Hay que sacarle las fn, algún día se hará).  
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Usuario{
+        id_usuario: AccountId,
+        nombre: String,
+        apellido: String,
+        direccion: String,
+        email: String,
+        rol: Rol,
+        datos_comprador: Option<Comprador>,
+        datos_vendedor: Option<Vendedor>,
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Comprador{
+        productos_comprados: Vec<u32>, 
+        calificaciones: Vec<u8>, 
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Vendedor{
+        stock_productos: Vec<(u32,u32)>, //Lo cambié a un Vec. Dolor de cabeza compilar. 
+        productos_publicados: Vec<Publicacion>,
+        calificaciones: Vec<u8>, 
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    enum Rol {
+        Ambos,
+        Comprador, 
+        Vendedor,
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Publicacion{
+        productos: Vec<Producto>, 
+        precio_total: u128, //Preguntar que tal se lleva la blockchain con numeros en punto flotante.  
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Producto{
+        nombre: String,
+        descripcion: String,
+        stock: u32,
+        precio: u128, //Podria ser flotante. 
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct OrdenCompra{
+        estado: EstadoCompra,
+        cancelacion: (bool, bool),  //Para estado cancelada
+        productos_comprados: Publicacion,
+    }
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    enum EstadoCompra{
+        Pendiente,
+        Enviado,
+        Recibido,
+        Cancelada,
     }
 
     impl PrimerContrato {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
-        pub fn new(init_value: bool) -> Self {
-            Self { value: init_value }
-        }
-
-        /// Constructor that initializes the `bool` value to `false`.
-        ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
+        pub fn new() -> Self {
+            Self {
+                usuarios: Mapping::default(),
+                historial_publicacioes: StorageVec::new(),
+                historial_productos: Mapping::default(),
+                value: false,
+            }
         }
 
         /// A message that can be called on instantiated contracts.
