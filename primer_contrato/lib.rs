@@ -24,6 +24,8 @@ mod primer_contrato {
     use ink::prelude::string::String;
 
 
+/////////////////////////// SISTEMA ///////////////////////////
+
     #[ink(storage)]
     pub struct PrimerContrato {
         usuarios: Mapping<AccountId, Usuario>, //Se persiste la información de los usuarios.     ----->  /Teo/ cambie u32 por acountId ya que son 2 tipos distintos para el programa 
@@ -31,80 +33,6 @@ mod primer_contrato {
         historial_productos: Mapping<u32,Producto>, //Se persisten los productos de mis sistema. Team de que debería ser un Vec. 
         value: bool, //Si borras esto se rompe todo. En serio, fijate. (Hay que sacarle las fn, algún día se hará).  
     }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct Usuario{
-        id_usuario: AccountId,
-        nombre: String,
-        apellido: String,
-        direccion: String,
-        email: String,
-        rol: Rol,
-        datos_comprador: Option<Comprador>,
-        datos_vendedor: Option<Vendedor>,
-    }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct Comprador{
-        productos_comprados: Vec<u32>, 
-        calificaciones: Vec<u8>, 
-    }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct Vendedor{
-        stock_productos: Vec<(u32,u32)>, //Lo cambié a un Vec. Dolor de cabeza compilar. 
-        productos_publicados: Vec<Publicacion>,
-        calificaciones: Vec<u8>, 
-    }
-    #[derive(Clone, PartialEq)]                // teo // agrege trait Clone 
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]                            
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    pub enum Rol {                                                              //warning a discutir   /* agregue pub al enum porque la impl de usuario la necesita */
-        Ambos,
-        Comprador, 
-        Vendedor,
-    }
-
-    #[derive(Clone)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct Publicacion{
-        productos: Vec<Producto>, 
-        precio_total: u64, //Preguntar que tal se lleva la blockchain con numeros en punto flotante.  
-    }
-
-    #[derive(Clone)]                // teo // agrege trait Clone
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    pub struct Producto{
-        id: u32,
-        nombre: String,
-        descripcion: String,
-        stock: u32,
-        precio: u64, //Podria ser flotante.
-        categoria:String,
-    }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct OrdenCompra{
-        estado: EstadoCompra,
-        cancelacion: (bool, bool),  //Para estado cancelada
-        productos_comprados: Publicacion,
-    }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    enum EstadoCompra{
-        Pendiente,
-        Enviado,
-        Recibido,
-        Cancelada,
-    }
-
     impl PrimerContrato {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -177,6 +105,22 @@ mod primer_contrato {
     
     }
 
+
+
+/////////////////////////// USUARIO ///////////////////////////
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Usuario{
+        id_usuario: AccountId,
+        nombre: String,
+        apellido: String,
+        direccion: String,
+        email: String,
+        rol: Rol,
+        datos_comprador: Option<Comprador>,
+        datos_vendedor: Option<Vendedor>,
+    }
     impl Usuario {
         
         pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol,) -> Usuario {
@@ -229,6 +173,28 @@ mod primer_contrato {
         }
     }
 
+
+
+/////////////////////////// COMPRADOR ///////////////////////////
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Comprador{
+        productos_comprados: Vec<u32>, 
+        calificaciones: Vec<u8>, 
+    }
+
+
+
+/////////////////////////// VENDEDOR ///////////////////////////
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Vendedor{
+        stock_productos: Vec<(u32,u32)>, //Lo cambié a un Vec. Dolor de cabeza compilar. 
+        productos_publicados: Vec<Publicacion>,
+        calificaciones: Vec<u8>, 
+    }
     impl Vendedor{
         fn crear_publicacion(&mut self, productos_a_publicar: Vec<Producto>) -> Result<Publicacion, String>{
             let precio_total = productos_a_publicar.iter().try_fold(0u64, |acc, producto| acc.checked_add(producto.precio)).ok_or("Overflow en suma de precios")?; 
@@ -240,6 +206,47 @@ mod primer_contrato {
             Ok(publicacion)
         }
 
+    }
+
+
+
+/////////////////////////// ROL ///////////////////////////
+
+    #[derive(Clone, PartialEq)]                // teo // agrege trait Clone 
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]                            
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    pub enum Rol {                                                              //warning a discutir   /* agregue pub al enum porque la impl de usuario la necesita */
+        Ambos,
+        Comprador, 
+        Vendedor,
+    }
+
+
+
+/////////////////////////// PUBLICACION ///////////////////////////
+
+    #[derive(Clone)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct Publicacion{
+        productos: Vec<Producto>, 
+        precio_total: u64, //Preguntar que tal se lleva la blockchain con numeros en punto flotante.  
+    }
+
+
+
+/////////////////////////// PRODUCTO ///////////////////////////
+
+    #[derive(Clone)]                // teo // agrege trait Clone
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    pub struct Producto{
+        id: u32,
+        nombre: String,
+        descripcion: String,
+        stock: u32,
+        precio: u64, //Podria ser flotante.
+        categoria:String,
     }
 
     impl Producto {
@@ -254,6 +261,41 @@ mod primer_contrato {
             }
         }
     }
+
+
+
+/////////////////////////// ORDEN DE COMPRA ///////////////////////////
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    struct OrdenCompra{
+        estado: EstadoCompra,
+        cancelacion: (bool, bool),  //Para estado cancelada
+        productos_comprados: Publicacion,
+    }
+
+
+
+/////////////////////////// ESTADO DE COMPRA ///////////////////////////
+
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    enum EstadoCompra{
+        Pendiente,
+        Enviado,
+        Recibido,
+        Cancelada,
+    }
+
+
+
+
+
+
+
+
+
+
 
     /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
     /// module and test functions are marked with a `#[test]` attribute.
