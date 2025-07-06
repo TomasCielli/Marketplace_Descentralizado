@@ -7,21 +7,27 @@
     3) Solo las estructuras StorageVec y Mapping persistirán su información. 
     4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
         Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
+
+
+        CONSULTAS:
+        
+            1) Los productos deben estar previamente cargados en sistema? 
+}
+
 */
 
 #[ink::contract]
 mod primer_contrato {
-
     use ink::storage::Mapping;
-    use ink::prelude::collections::HashMap; //No deberiamos usar nunca un HashMap. No me compila, más fácil clavar un Vec. 
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
     use ink::prelude::string::String;
-    
+
+
     #[ink(storage)]
     pub struct PrimerContrato {
-        usuarios: Mapping<u32, Usuario>, //Se persiste la información de los usuarios.
-        historial_publicacioes: StorageVec<Publicacion>, //Se persisten las publicaciones realizadas.
+        usuarios: Mapping<AccountId, Usuario>, //Se persiste la información de los usuarios.     ----->  /Teo/ cambie u32 por acountId ya que son 2 tipos distintos para el programa 
+        historial_publicaciones: StorageVec<Publicacion>, //Se persisten las publicaciones realizadas.
         historial_productos: Mapping<u32,Producto>, //Se persisten los productos de mis sistema. Team de que debería ser un Vec. 
         value: bool, //Si borras esto se rompe todo. En serio, fijate. (Hay que sacarle las fn, algún día se hará).  
     }
@@ -53,29 +59,33 @@ mod primer_contrato {
         productos_publicados: Vec<Publicacion>,
         calificaciones: Vec<u8>, 
     }
-
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[derive(Clone, PartialEq)]                // teo // agrege trait Clone 
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]                            
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    enum Rol {
+    pub enum Rol {                                                              //warning a discutir   /* agregue pub al enum porque la impl de usuario la necesita */
         Ambos,
         Comprador, 
         Vendedor,
     }
 
+    #[derive(Clone)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
     struct Publicacion{
         productos: Vec<Producto>, 
-        precio_total: u128, //Preguntar que tal se lleva la blockchain con numeros en punto flotante.  
+        precio_total: u64, //Preguntar que tal se lleva la blockchain con numeros en punto flotante.  
     }
 
+    #[derive(Clone)]                // teo // agrege trait Clone
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
-    struct Producto{
+    pub struct Producto{
+        id: u32,
         nombre: String,
         descripcion: String,
         stock: u32,
-        precio: u128, //Podria ser flotante. 
+        precio: u64, //Podria ser flotante.
+        categoria:String,
     }
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
@@ -100,10 +110,55 @@ mod primer_contrato {
         pub fn new() -> Self {
             Self {
                 usuarios: Mapping::default(),
-                historial_publicacioes: StorageVec::new(),
+                historial_publicaciones: StorageVec::new(),
                 historial_productos: Mapping::default(),
-                value: false,
+                value: false,                //lo dejamos xq explota
             }
+        }
+
+        #[ink(message)]
+        pub fn agregar_usuario_sitema(&mut self, nombre: String, apellido: String, direccion: String, email: String, rol: Rol) -> Result <(), String>{
+            let account_id = self.env().caller();    // el caller obtiene la cuenta del usuario que esta invocando la fn
+            if self.usuarios.get(account_id).is_some(){
+                Err("El usuario ya esta registrado.".to_string())
+            } else {
+                let usuario = Usuario::nuevo(account_id, nombre, apellido, direccion, email, rol);  // generamos el usuario
+                self.usuarios.insert(account_id, &usuario); // lo metemos en el  hashmap/mapping de usuarios 
+                Ok(())
+            }
+        }
+
+        #[ink(message)]
+        pub fn crear_publicacion(&mut self, productos_a_publicar: Vec<Producto>) -> Result<(), String> {
+            let account_id = self.env().caller();
+            if let Some(mut usuario) = self.usuarios.get(&account_id){
+                let publicacion = usuario.crear_publicacion(productos_a_publicar)?;
+                self.historial_publicaciones.push(&publicacion);
+                self.usuarios.insert(account_id, &usuario);
+                Ok(())
+            }
+            else {
+                Err("No existe el usuario.".to_string())
+            }
+
+        }
+        
+        #[ink(message)]
+        pub fn visualizar_productos(&self) -> Result<Vec<(Producto, u32)>, String>{
+            let account_id = self.env().caller();
+            if let Some(mut usuario) = self.usuarios.get(&account_id){
+                let id_stock = usuario.visualizar_productos()?;
+                let mut vector_productos_stock = Vec::new();
+                for (id, stock) in id_stock{
+                    let producto = self.historial_productos.get(id).unwrap().clone(); //Los productos deben estar previamente cargados en sistema
+                    vector_productos_stock.push((producto, stock));
+                }
+                Ok(vector_productos_stock)
+            }
+            else {
+                Err("No existe el usuario.".to_string())
+            }
+
         }
 
         /// A message that can be called on instantiated contracts.
@@ -114,10 +169,89 @@ mod primer_contrato {
             self.value = !self.value;
         }
 
-        /// Simply returns the current value of our `bool`.
+            /// Simply returns the current value of our `bool`.
         #[ink(message)]
         pub fn get(&self) -> bool {
-            self.value
+             self.value
+        }
+    
+    }
+
+    impl Usuario {
+        
+        pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol,) -> Usuario {
+            Usuario {
+                id_usuario: id,
+                nombre,
+                apellido,
+                direccion,
+                email,
+                rol: rol.clone(),
+                datos_comprador: match rol {
+                    Rol::Comprador | Rol::Ambos => Some(Comprador {         // si el rol es comprador o ambos se inicializan 
+                        productos_comprados: Vec::new(),
+                        calificaciones: Vec::new(),
+                    }),
+                    _ => None,
+                },
+                datos_vendedor: match rol {
+                    Rol::Vendedor | Rol::Ambos => Some(Vendedor {            // si el rol es Vendedor o ambos se inicializan
+                        stock_productos: Vec::new(),
+                        productos_publicados: Vec::new(),
+                        calificaciones: Vec::new(),
+                    }),
+                    _ => None,
+                },
+            }
+        }
+
+        fn crear_publicacion(&mut self, productos_a_publicar: Vec<Producto>) -> Result<Publicacion, String>{
+            if self.rol == Rol::Comprador {  // <------------------------ TOBI DEJA DE LLORAR
+                Err("El usuario no es vendedor.".to_string())
+            }
+            else {
+                if let Some(ref mut datos_vendedor) = self.datos_vendedor{
+                    datos_vendedor.crear_publicacion(productos_a_publicar)
+                }
+                else {
+                    Err("No nos dejo poner otra cosa xd.".to_string())
+                }
+            }
+        }
+
+        fn visualizar_productos(&self) -> Result<Vec<(u32, u32)>, String>{
+            if let Some(ref datos_vendedor) = self.datos_vendedor{
+                Ok(datos_vendedor.stock_productos.clone())
+            }
+            else{
+                Err("No es vendedor, no tiene productos.".to_string())
+            }
+        }
+    }
+
+    impl Vendedor{
+        fn crear_publicacion(&mut self, productos_a_publicar: Vec<Producto>) -> Result<Publicacion, String>{
+            let precio_total = productos_a_publicar.iter().try_fold(0u64, |acc, producto| acc.checked_add(producto.precio)).ok_or("Overflow en suma de precios")?; 
+            let publicacion = Publicacion{
+                productos: productos_a_publicar,
+                precio_total,
+            };
+            self.productos_publicados.push(publicacion.clone());
+            Ok(publicacion)
+        }
+
+    }
+
+    impl Producto {
+        pub fn nuevo(id: u32, nombre: String, descripcion: String, stock: u32, precio: u64, categoria: String,) -> Producto {
+            Producto {
+                id,
+                nombre,
+                descripcion,
+                stock,
+                precio,
+                categoria,
+            }
         }
     }
 
@@ -145,6 +279,9 @@ mod primer_contrato {
             assert_eq!(primer_contrato.get(), true);
         }
     }
+
+
+    
 
 
     /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
@@ -218,3 +355,17 @@ mod primer_contrato {
         }
     }
 }
+
+
+
+// implementacion del primerContrato o marketPlace
+// Fn agregadas
+// fn agregar_usuario_sistema  en linea 109
+
+// implementacio del usuario 
+// fn nuevo en linea 158   la implementacion  genero que tenga que agregar derive clone en el enum de rol y hacer el mismo pub 
+// esto esta comentado en linea  56 y 58 no se que tan valido es poner el rol como pub  pero sino no funca
+
+// fn publicacion de productos  la verdad esta fn esta para detonar pero capaz  sirve 
+// la struct de producto paso a pub poque si no explota el programa  lo mismo que el rol no se que tan valido es esto 
+//se agregaron derive clone arriba de algunas struct 
