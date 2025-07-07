@@ -5,11 +5,6 @@
 /* 
     IMPORTANTE
 
-        ARREGLOS URGENTES!!!!
-
-            1) Revisar en TODAS las funciones el uso de .get en general. Consejo: doble click en .get() y ver TODOS los lugares donde se lo llama. Suerte jiji
-
-        
         PERSISTENCIA DE DATOS
 
             1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
@@ -40,8 +35,6 @@ mod primer_contrato {
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
     use ink::prelude::string::{String, ToString};
-    
-/////////////////////////// ALERTA ALERTA ALERTA EL MAPPING DEVUELVE COPIAS NOMAS, ERGO HAY QUE PISAR TODOS LAS VECES QUE MODIFICAMOS USUARIO /////////////////////////
 
 /////////////////////////// SISTEMA ///////////////////////////
     #[ink(storage)]
@@ -110,7 +103,9 @@ mod primer_contrato {
         pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
             let account_id = self.env().caller();
             if let Some(mut usuario) = self.usuarios.get(account_id){
-                usuario.modificar_rol(nuevo_rol)
+                let resultado = usuario.modificar_rol(nuevo_rol)?;
+                self.usuarios.insert(account_id, &usuario);
+                Ok(resultado)
             }
             else {
                 Err("No existe el usuario.".to_string())
@@ -125,8 +120,9 @@ mod primer_contrato {
                 let mut hay_stock = self.hay_stock_suficiente(publicacion.productos.clone())?; //si hay stock devuelve error, termina la funcion. Sino sigue ejecutando
                 let id_orden = self.historial_ordenes_de_compra.len(); //guarda la id
                 let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone())?; // <---- Que revise el stock primero
-                hay_stock = self.descontar_stock(publicacion.productos)?;
+                hay_stock = self.descontar_stock(publicacion.productos)?; //descuenta el stock del producto
                 self.historial_ordenes_de_compra.push(&(id_orden, orden_de_compra));
+                self.usuarios.insert(account_id, &usuario); //sobreescribe el usuario en el mapping
                 Ok(())  
             }
             else {
@@ -134,7 +130,91 @@ mod primer_contrato {
             }
         }
         
+        #[ink(message)]
+        pub fn enviar_compra(&mut self, id_orden: u32) -> Result<(), String>{
+            let account_id = self.env().caller();
+            if let Some(usuario) = self.usuarios.get(account_id){
+                for i in 0..self.historial_ordenes_de_compra.len() {
+                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                        if id == id_orden {
+                            let id_publicacion = orden_de_compra.info_publicacion.0;
+                            let _ = usuario.enviar_compra(id_publicacion)?;
+                            orden_de_compra.estado = EstadoCompra::Enviado;
+                            let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
+                            return Ok(());
+                        }
+                    }
+                }
+                Err("No existe la orden buscada.".to_string())
+            }
+            else {
+                Err("No existe el usuario.".to_string())
+            }
+        }
         
+        #[ink(message)]
+        pub fn recibir_compra(&mut self, id_orden: u32) -> Result<(), String>{
+            let account_id = self.env().caller(); 
+            if let Some(usuario) = self.usuarios.get(account_id){ //busca el usuario
+                for i in 0..self.historial_ordenes_de_compra.len() { //recorre las ordenes
+                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                        if id == id_orden { //si encuentra la orden
+                            if orden_de_compra.estado != EstadoCompra::Enviado{
+                                return Err("El producto todavia ni fue enviado master, espera unos dias maquinola".to_string());
+                            }
+                            let _ = usuario.recibir_compra(id_orden)?; //continua sino, error
+                            orden_de_compra.estado = EstadoCompra::Recibido;
+                            let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
+                            return Ok(())
+                        }
+                    }
+                }
+                Err("No existe la orden buscada.".to_string()) //si no encontro la orden devuelve error
+            }
+            else {
+                Err("No existe el usuario.".to_string()) //si no encontro el usuario devuelve error
+            }
+        }
+
+        #[ink(message)]
+        pub fn cancelar_compra(&mut self, id_orden:u32) -> Result<(), String>{ // <------- FALTA TERMINAR
+            let account_id = self.env().caller(); 
+            if let Some(usuario) = self.usuarios.get(account_id){ //busca el usuario
+                for i in 0..self.historial_ordenes_de_compra.len(){
+                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                        if id == id_orden{
+                            let publicacion = orden_de_compra.info_publicacion.clone();
+                            if orden_de_compra.estado != EstadoCompra::Pendiente{
+                                return Err("La compra no puede ser cancelada. No esta en estado pendiente.".to_string())
+                            }
+                            else {
+                                let rol = usuario.comprobar_rol(id_orden, publicacion.0)?;
+                                if rol == Rol::COMPRADOR{
+                                    orden_de_compra.cancelacion.1 = true;
+                                }
+                                else {
+                                    if orden_de_compra.cancelacion.1 == true{
+                                        orden_de_compra.cancelacion.0 = true;
+                                        orden_de_compra.estado = EstadoCompra::Cancelada;
+                                        let _ = self.aumentar_stock(publicacion.1)?;  //PREGUNTAR 
+                                    }
+                                    else {
+                                        return Err("El comprador no desea cancelar la compra.".to_string())
+                                    }
+                                }
+                                let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
+                                return Ok(())
+                            }
+                        }
+                    }
+                }
+                return Err("No se encontro la orden de compra.".to_string())
+            }
+            else {
+                Err("No existe el usuario.".to_string()) //si no encontro el usuario devuelve error
+            }
+        }
+
         fn calcular_precio_final(&self, productos_publicados: Vec<(u32, u32)>) -> Result<u32, String>{
             let mut total: u32 = 0;
             for (id, cantidad) in productos_publicados{
@@ -170,7 +250,7 @@ mod primer_contrato {
             for (id, cantidad) in productos_cantidades{
                 if let Some ((producto, mut stock)) = self.historial_productos.get(id){
                     stock = stock.checked_sub(cantidad).ok_or("Error al restar stock")?; //siempre va a haber stock minimo sufiente porque se revisa antes con la fn "hay_stock_suficiente"
-                    self.historial_productos.insert(id, &(producto, stock));
+                    self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
                 }
                 else {
                     return Err("No se encontro el producto.".to_string())
@@ -178,6 +258,20 @@ mod primer_contrato {
             }
             Ok(())
         }
+
+        fn aumentar_stock(&mut self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
+            for (id, cantidad) in productos_cantidades{
+                if let Some ((producto, mut stock)) = self.historial_productos.get(id){
+                    stock = stock.checked_add(cantidad).ok_or("Error al sumar stock")?;
+                    self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
+                }
+                else {
+                    return Err("No se encontro el producto.".to_string())
+                }
+            }
+            Ok(())
+        }
+
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -307,6 +401,92 @@ mod primer_contrato {
                 Err("No hay datos de comprador.".to_string())
             }
         }
+
+        fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
+            if self.rol == Rol::COMPRADOR{
+                Err("El usuario no posee el rol de vendedor.".to_string())
+            }
+            else if let Some(ref datos_vendedor) = self.datos_vendedor{
+                datos_vendedor.enviar_compra(id_publicacion)
+            }
+            else {
+                Err("El vendedor no tiene datos.".to_string())
+            }
+        }
+
+        fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
+            if self.rol == Rol::VENDEDOR{
+                Err("El usuario no posee el rol de comprador.".to_string())
+            }
+            else if let Some(ref datos_comprador) = self.datos_comprador{
+                datos_comprador.recibir_compra(id_orden)
+            }
+            else {
+                Err("No hay datos del comprador.".to_string())
+            }
+        }
+
+        fn comprobar_rol(&self, id_orden: u32, id_publicacion: u32) -> Result<Rol, String>{
+            match self.rol{
+                Rol::VENDEDOR => {
+                    if let Some(ref datos_vendedor) = self.datos_vendedor{
+                        if self.es_el_vendedor(id_publicacion){
+                            return Ok(Rol::VENDEDOR)
+                        }
+                        else {
+                            Err("El vendedor no tiene esa publicacion.".to_string())
+                        }
+                    }
+                    else {
+                        Err("El vendedor no tiene datos cargados.".to_string())
+                    }
+                },
+
+                Rol::COMPRADOR => {
+                    if let Some(ref datos_comprador) = self.datos_comprador{
+                        if self.es_el_comprador(id_orden){
+                            return Ok(Rol::COMPRADOR)
+                        }
+                        else{
+                            return Err("El usuario no tiene ese pedido de compra.".to_string())
+                        }
+                    }
+                    else {
+                        Err("El comprador no tiene datos cargados.".to_string())
+                    }
+                },
+
+                Rol::AMBOS => {
+                    if self.es_el_vendedor(id_publicacion) {
+                        return Ok(Rol::VENDEDOR)
+                    }
+                    else if self.es_el_comprador(id_orden) {
+                        return Ok(Rol::COMPRADOR)
+                    }
+                    else {
+                        return Err("El usuario no tiene acceso a la compra.".to_string())
+                    }
+                },
+            }
+        }
+
+        fn es_el_vendedor(&self, id_publicacion: u32) -> bool{
+            if let Some(ref datos_vendedor) = self.datos_vendedor{
+                datos_vendedor.es_el_vendedor(id_publicacion)
+            }
+            else {
+                false
+            }
+        }
+
+        fn es_el_comprador(&self, id_orden: u32) -> bool{
+            if let Some(ref datos_comprador) = self.datos_comprador{
+                datos_comprador.es_el_comprador(id_orden)
+            }
+            else {
+                false
+            }
+        }
     }
 
 
@@ -324,6 +504,19 @@ mod primer_contrato {
         fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion) -> OrdenCompra{
             self.ordenes_de_compra.push(id_publicacion);
             OrdenCompra::crear_orden_de_compra(id_publicacion, publicacion)
+        }
+
+        fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
+            if self.ordenes_de_compra.iter().find(|id| **id == id_orden).is_some(){
+                Ok(())
+            }
+            else {
+                Err("No se encontro la orden de compra.".to_string())
+            }
+        }
+
+        fn es_el_comprador(&self, id_orden: u32) -> bool{
+            self.ordenes_de_compra.iter().find(|id| **id == id_orden).is_some()
         }
     }
 
@@ -345,6 +538,18 @@ mod primer_contrato {
             publicacion
         }
 
+        fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
+            if self.publicaciones.iter().find(|id| **id == id_publicacion).is_some(){
+                Ok(())
+            }
+            else {
+                Err("La publicacion buscada no pertenece a este vendedor.".to_string())
+            }
+        }
+
+        fn es_el_vendedor(&self, id_publicacion: u32) -> bool{
+            self.publicaciones.iter().find(|id| **id == id_publicacion).is_some()
+        }
     }
 
 
@@ -419,7 +624,7 @@ mod primer_contrato {
     struct OrdenCompra{
         id: u32,
         estado: EstadoCompra,
-        cancelacion: (bool, bool),  //Para estado cancelada
+        cancelacion: (bool, bool),  //(vendedor, comprador) //Para estado cancelada
         info_publicacion: (u32, Vec<(u32, u32)>, u32) // (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion)
     }
     impl OrdenCompra{
@@ -444,7 +649,7 @@ mod primer_contrato {
 
 /////////////////////////// ESTADO DE COMPRA ///////////////////////////
 
-    #[derive(Clone)]
+    #[derive(Clone, PartialEq)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
     enum EstadoCompra{
@@ -453,7 +658,6 @@ mod primer_contrato {
         Recibido,
         Cancelada,
     }
-
 
 
 
@@ -746,6 +950,3 @@ zerotrie = "=0.2.1"
 zerovec = "=0.10.0"
 
 */
-
-
-
