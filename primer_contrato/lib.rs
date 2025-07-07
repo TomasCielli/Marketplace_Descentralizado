@@ -44,7 +44,6 @@ mod primer_contrato {
 /////////////////////////// ALERTA ALERTA ALERTA EL MAPPING DEVUELVE COPIAS NOMAS, ERGO HAY QUE PISAR TODOS LAS VECES QUE MODIFICAMOS USUARIO /////////////////////////
 
 /////////////////////////// SISTEMA ///////////////////////////
-
     #[ink(storage)]
     pub struct PrimerContrato {
         usuarios: Mapping<AccountId, Usuario>, //Se persiste la información de los usuarios. 
@@ -134,7 +133,8 @@ mod primer_contrato {
                 Err("No existe el usuario.".to_string())
             }
         }
-
+        
+        
         fn calcular_precio_final(&self, productos_publicados: Vec<(u32, u32)>) -> Result<u32, String>{
             let mut total: u32 = 0;
             for (id, cantidad) in productos_publicados{
@@ -150,6 +150,7 @@ mod primer_contrato {
             Ok(total)
         }
 
+      
         fn hay_stock_suficiente(&self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
             for (id, cantidad) in productos_cantidades{ //recorremos el vector de productos y cantidades
                 if let Some((_producto, stock)) = self.historial_productos.get(id){ //si encuentra el producto
@@ -163,7 +164,8 @@ mod primer_contrato {
             }
             Ok(()) //si no sale por ninguna de las opciones anterios esta todo Ok, devuelve Ok
         }
-
+        
+        
         fn descontar_stock(&mut self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
             for (id, cantidad) in productos_cantidades{
                 if let Some ((producto, mut stock)) = self.historial_productos.get(id){
@@ -182,8 +184,7 @@ mod primer_contrato {
             Self::new()
         }
     }
-
-
+       
 
 /////////////////////////// USUARIO ///////////////////////////
 
@@ -350,7 +351,7 @@ mod primer_contrato {
 
 /////////////////////////// ROL ///////////////////////////
 
-    #[derive(Clone, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]    // agrege clone  para comprobar los test 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]                            
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
     pub enum Rol {
@@ -466,7 +467,7 @@ mod primer_contrato {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
-        /// We test if the default constructor does its job.
+       /* /// We test if the default constructor does its job.
         #[ink::test]
         fn default_works() {
             let primer_contrato = PrimerContrato::default();
@@ -481,7 +482,133 @@ mod primer_contrato {
             primer_contrato.flip();
             assert_eq!(primer_contrato.get(), true);
         }
+    */
+       
+        fn obtener_usuario_test(contrato: &PrimerContrato, account_id: AccountId) -> Option<Usuario> {
+            contrato.usuarios.get(account_id)
+        }
+        /* ---------------------------------------------------------------   */
+        /* -------------------- Test Agregar Usuario ---------------------   */
+        /* ---------------------------------------------------------------   */
+        #[ink::test]
+        fn Test_agregar_usuario() {
+        let mut contrato = PrimerContrato::default();
+        let account_id = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>().alice;    // carteras simuladas ink! define un conjunto de cuentas por defecto que se pueden usar en los tests.
+        
+        //  Alice es el caller       
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account_id);
+
+        let resultado = contrato.agregar_usuario_sitema(
+            "teo".to_string(),
+            "Cortez".to_string(),
+            "La Plata".to_string(),
+            "teo@mail.com".to_string(),
+            Rol::COMPRADOR,
+        );
+
+        assert!(resultado.is_ok(), "El usuario debería agregarse correctamente");
+
+        let usuario_guardado = obtener_usuario_test(&contrato, account_id);                           // esto esta arriba 
+        assert!(usuario_guardado.is_some(), "El usuario debería estar presente en el mapping");
+
+        let usuario = usuario_guardado.unwrap();
+        assert_eq!(usuario.nombre, "teo");
+        assert_eq!(usuario.rol, Rol::COMPRADOR);
     }
+
+    #[ink::test]
+    fn Test_agregar_usuario_duplicado() {                               // Test que comprueba error 
+        let mut contrato = PrimerContrato::default();
+        let account_id = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>().bob;
+
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account_id);
+
+        let resultado_1 = contrato.agregar_usuario_sitema(                              // se genera un marketPlace default y agrega un usuario
+            "teo".to_string(),
+            "cortez".to_string(),
+            "La Plata".to_string(),
+            "teo@mail.com".to_string(),
+            Rol::VENDEDOR,
+        );
+
+        assert!(resultado_1.is_ok(), "Primer registro debería funcionar");              // se genera un usuario y se intenta arreglar
+
+
+        let resultado_2 = contrato.agregar_usuario_sitema(
+            "teo".to_string(),
+            "cortez".to_string(),
+            "La Plata".to_string(),
+            "teo@mail.com".to_string(),
+            Rol::VENDEDOR,
+        );
+
+        assert!(resultado_2.is_err(), "No se debería permitir agregar el mismo usuario dos veces");
+        assert_eq!(resultado_2.unwrap_err(), "El usuario ya esta registrado.");
+    }
+
+    /* ---------------------------------------------------------------   */
+    /* ---------------------------------------------------------------   */
+    /* ---------------------------------------------------------------   */
+    #[ink::test]
+    fn test_crear_publicacion() {
+        let mut contrato = PrimerContrato::default();
+        let account_id = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>().alice;
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account_id);
+
+        // Registramos al usuario vendedor
+        let _ = contrato.agregar_usuario_sitema(
+            "vendedor".to_string(),
+            "uno".to_string(),
+            "Av 1".to_string(),
+            "Messi@gmail.com".to_string(),
+            Rol::VENDEDOR,
+        );
+
+        // Insertamos un producto directamente al historial del sistema (producto id 1)
+        let producto = Producto::nuevo(1, "Mouse".to_string(), "Gamer RGB".to_string(), 100, "Computacion".to_string());
+        contrato.historial_productos.insert(1, &(producto, 10)); 
+
+        let resultado = contrato.crear_publicacion(vec![(1, 2)]);
+        assert!(resultado.is_ok(), "La publicación debería crearse correctamente");
+
+        // Verifica que se haya guardado en historial_publicaciones
+        assert_eq!(contrato.historial_publicaciones.len(), 1);
+    }
+
+    #[ink::test]
+    fn test_crear_publicacion_usuario_inexistente() {
+        let mut contrato = PrimerContrato::default();
+        let account_id = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>().alice;
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account_id);
+
+        let resultado = contrato.crear_publicacion(vec![(1, 2)]);
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err(), "No existe el usuario.");
+    }
+
+    #[ink::test]
+    fn test_crear_publicacion_producto_inexistente() {
+        let mut contrato = PrimerContrato::default();
+        let account_id = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>().alice;
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(account_id);
+
+        let _ = contrato.agregar_usuario_sitema(
+            "tomas".to_string(),
+            "user".to_string(),
+            "Argentina".to_string(),
+            "tomas@mail.com".to_string(),
+            Rol::VENDEDOR,
+        );
+
+        // Producto con id 99 no existe
+        let resultado = contrato.crear_publicacion(vec![(99, 1)]);
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err(),
+            "Uno de los productos a calcular no se encuentra cargado."
+        );
+    }
+}
 
 
     
@@ -571,4 +698,54 @@ mod primer_contrato {
 
 // fn publicacion de productos  la verdad esta fn esta para detonar pero capaz  sirve 
 // la struct de producto paso a pub poque si no explota el programa  lo mismo que el rol no se que tan valido es esto 
-//se agregaron derive clone arriba de algunas struct 
+//se agregaron derive clone arriba de algunas struct
+
+
+
+
+/* ----------------------Importante-O-No---------------------------------*/
+/*Documentacion de ink*/
+/*https://docs.rs/ink_env/4.3.0/ink_env/index.html#modules*/
+// Cosas de los contratos
+
+/*Development Accounts
+The alice development account will be the authority and sudo account as declared in the genesis state. While at the same time, the following accounts will be pre-funded:
+
+Alice
+Bob
+Charlie
+Dave
+Eve
+Ferdie
+
+
+estas son las cuentas que se deberian permitir en la zona de test  
+
+compilar o hacer cargo test me genero un monton de quilombos tuve que actualizar varias cosas 
+el comando para probar los test es:= cargo test -- --nocapture
+
+
+agrege esto en dependencia
+[patch.crates-io]
+backtrace = "=0.3.74"
+icu_collections = "=1.4.0"
+icu_locale_core = "=1.4.0"
+icu_normalizer = "=1.4.0"
+icu_normalizer_data = "=1.4.0"
+icu_properties = "=1.4.0"
+icu_properties_data = "=1.4.0"
+icu_provider = "=1.4.0"
+idna_adapter = "=1.1.0"
+litemap = "=0.7.0"
+potential_utf = "=0.1.1"
+tinystr = "=0.7.0"
+writeable = "=0.5.0"
+yoke = "=0.7.0"
+zerofrom = "=0.1.5"
+zerotrie = "=0.2.1"
+zerovec = "=0.10.0"
+
+*/
+
+
+
