@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #![allow(non_local_definitions)]
-
+//NO COMPILA
 
 /* 
     IMPORTANTE
@@ -20,12 +20,19 @@
         CONSULTAS:
         
             1) Los productos deben estar previamente cargados en sistema? 
-            2) Puede haber productos (con o sin stock) que no esten en publicaciones? //preguntada
+            2) Puede haber productos (con o sin stock) que no esten en publicaciones? //repreguntar
             3) Que es la categoria del producto?: Enum o String
             4) LINEA 75. Hay que sobreescribir los datos del mapping de usuario (este fue modificado)?
             5) LINEA 219. Amerita error?
             6) La cancelacion devuelve stock a su valor anterior?
-}
+            7) Cargo test no funciona
+
+        COSAS A COMPLETAR:       
+
+            1) Modificar el comprobar_rol, ya que ahora se tiene el id del vendedor
+            2) Que las calificaciones esten en un rango valido (6<0)
+            3) Completar struct orden, teniendo en cuenta los dos option de calificacion
+            4) Te cojo? //<-------- MUY IMPORTANTE!!
 
 */
 
@@ -76,7 +83,7 @@ mod primer_contrato {
             if let Some(mut usuario) = self.usuarios.get(account_id){
                 let id_publicacion = self.historial_publicaciones.len();
                 let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
-                let publicacion = usuario.crear_publicacion(productos_a_publicar, precio_final, id_publicacion)?;
+                let publicacion = usuario.crear_publicacion(productos_a_publicar, precio_final, id_publicacion, account_id)?;
                 self.historial_publicaciones.push(&(id_publicacion, publicacion));
                 self.usuarios.insert(account_id, &usuario); //lo sobreescribe
                 Ok(())
@@ -119,7 +126,7 @@ mod primer_contrato {
                 let publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
                 let mut hay_stock = self.hay_stock_suficiente(publicacion.productos.clone())?; //si hay stock devuelve error, termina la funcion. Sino sigue ejecutando
                 let id_orden = self.historial_ordenes_de_compra.len(); //guarda la id
-                let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone())?; // <---- Que revise el stock primero
+                let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?; // <---- Que revise el stock primero
                 hay_stock = self.descontar_stock(publicacion.productos)?; //descuenta el stock del producto
                 self.historial_ordenes_de_compra.push(&(id_orden, orden_de_compra));
                 self.usuarios.insert(account_id, &usuario); //sobreescribe el usuario en el mapping
@@ -215,6 +222,90 @@ mod primer_contrato {
             }
         }
 
+        #[ink(message)]
+        pub fn calificar(&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
+            let account_id = self.env().caller(); 
+            if let Some(usuario) = self.usuarios.get(account_id){
+                for i in 0..self.historial_ordenes_de_compra.len(){
+                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                        if id_orden == id{
+                            let publicacion = orden_de_compra.info_publicacion.clone();
+                            let rol = usuario.comprobar_rol(id_orden, publicacion.0)?;
+                            if rol == Rol::COMPRADOR{
+                                let id_vendedor = orden_de_compra.info_publicacion.3;
+                                let _ = self.puntuar_vendedor(id_vendedor, calificacion)?;
+                                return Ok(())
+                            }
+                            else { //es el vendedor
+                                let id_comprador = orden_de_compra.id_comprador;
+                                let _ = self.puntuar_comprador(id_comprador, calificacion)?;
+                                return Ok(())
+                            }
+
+                        }
+                    }    
+                }
+                Err("No se encontro una orden de compra con esa id.".to_string())
+            }
+            else {
+                Err("El usuario no existe".to_string())
+            }
+        }
+
+        #[ink(message)]
+        pub fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String>{
+            let account_id = self.env().caller(); 
+            if let Some(usuario) = self.usuarios.get(account_id){
+                usuario.mostrar_puntuacion_vendedor()
+            }
+            else {
+                Err("El usuario no se encuentra cargado en sistema.".to_string())
+            }
+        }
+
+        #[ink(message)]
+        pub fn mostrar_puntuacion_comprador(&self) -> Result<u8, String>{
+            let account_id = self.env().caller(); 
+            if let Some(usuario) = self.usuarios.get(account_id){
+                usuario.mostrar_puntuacion_comprador()
+            }
+            else {
+                Err("El usuario no se encuentra cargado en sistema.".to_string())
+            }
+        }
+
+        fn puntuar_vendedor(&mut self, id_vendedor: AccountId, calificacion: u8) -> Result<(), String>{
+            if let Some(mut vendedor) = self.usuarios.get(id_vendedor){
+                if let Some(ref mut datos_vendedor) = vendedor.datos_vendedor{
+                    datos_vendedor.reputacion_como_vendedor.push(calificacion);
+                    self.usuarios.insert(id_vendedor, &vendedor);
+                    Ok(())
+                }
+                else{
+                    return Err("El vendedor no tiene datos cargados.".to_string())
+                }
+            }
+            else{
+                return Err("No existe un vendedor con ese id".to_string())
+            }
+        }
+
+        fn puntuar_comprador(&mut self, id_comprador: AccountId, calificacion: u8) -> Result<(), String>{
+            if let Some(mut comprador) = self.usuarios.get(id_comprador){
+                if let Some(ref mut datos_comprador) = comprador.datos_comprador{
+                    datos_comprador.reputacion_como_comprador.push(calificacion);
+                    self.usuarios.insert(id_comprador, &comprador);
+                    Ok(())
+                }
+                else{
+                    return Err("El comprador no tiene datos cargados.".to_string())
+                }
+            }
+            else{
+                return Err("No existe un comprador con ese id".to_string())
+            }
+        }
+
         fn calcular_precio_final(&self, productos_publicados: Vec<(u32, u32)>) -> Result<u32, String>{
             let mut total: u32 = 0;
             for (id, cantidad) in productos_publicados{
@@ -271,7 +362,6 @@ mod primer_contrato {
             }
             Ok(())
         }
-
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -296,7 +386,7 @@ mod primer_contrato {
     }
     impl Usuario {
         
-        pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol,) -> Usuario {
+        pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol) -> Usuario {
             Usuario {
                 id_usuario: id,
                 nombre,
@@ -322,12 +412,12 @@ mod primer_contrato {
             }
         }
 
-        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32) -> Result<Publicacion, String>{  //productos_a_publicar = Vec<(id, cantidad)>
+        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Result<Publicacion, String>{  //productos_a_publicar = Vec<(id, cantidad)>
             if self.rol == Rol::COMPRADOR {
                 Err("El usuario no es vendedor.".to_string())
             }
             else if let Some(ref mut datos_vendedor) = self.datos_vendedor {
-                Ok(datos_vendedor.crear_publicacion(productos_a_publicar, precio_final, id_publicacion))
+                Ok(datos_vendedor.crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor))
             } 
             else {
                 Err("El vendedor no tiene datos.".to_string())
@@ -390,12 +480,12 @@ mod primer_contrato {
             }
         }
         
-        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion) -> Result<OrdenCompra, String>{
+        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion, id_comprador: AccountId) -> Result<OrdenCompra, String>{
             if self.rol == Rol::VENDEDOR{
                 Err("El usuario no esta autorizado para realizar una compra. ERROR: No posee el rol comprador.".to_string())
             }
             else if let Some(ref mut datos_comprador) = self.datos_comprador{
-                Ok(datos_comprador.crear_orden_de_compra(id_publicacion, publicacion))
+                Ok(datos_comprador.crear_orden_de_compra(id_publicacion, publicacion, id_comprador))
             }
             else{
                 Err("No hay datos de comprador.".to_string())
@@ -464,7 +554,7 @@ mod primer_contrato {
                         return Ok(Rol::COMPRADOR)
                     }
                     else {
-                        return Err("El usuario no tiene acceso a la compra.".to_string())
+                       Err("El usuario no tiene acceso a la compra.".to_string())
                     }
                 },
             }
@@ -487,6 +577,30 @@ mod primer_contrato {
                 false
             }
         }
+
+        fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String>{
+            if self.rol == Rol::COMPRADOR{
+                Err("El usuario no posee el rol vendedor".to_string())
+            }
+            else if let Some(ref datos_vendedor) = self.datos_vendedor{
+                datos_vendedor.mostrar_puntuacion_vendedor()
+            }
+            else{
+                Err("El vendedor no tiene datos cargados".to_string())
+            }
+        }
+
+        fn mostrar_puntuacion_comprador(&self) -> Result<u8, String>{
+            if self.rol == Rol::VENDEDOR{
+                Err("El usuario no posee el rol comprador".to_string())
+            }
+            else if let Some(ref datos_comprador) = self.datos_comprador{
+                datos_comprador.mostrar_puntuacion_comprador()
+            }
+            else{
+                Err("El comprador no tiene datos cargados".to_string())
+            }
+        }
     }
 
 
@@ -501,9 +615,9 @@ mod primer_contrato {
     }
     impl Comprador{
 
-        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion) -> OrdenCompra{
+        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
             self.ordenes_de_compra.push(id_publicacion);
-            OrdenCompra::crear_orden_de_compra(id_publicacion, publicacion)
+            OrdenCompra::crear_orden_de_compra(id_publicacion, publicacion, id_comprador)
         }
 
         fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
@@ -518,6 +632,16 @@ mod primer_contrato {
         fn es_el_comprador(&self, id_orden: u32) -> bool{
             self.ordenes_de_compra.iter().find(|id| **id == id_orden).is_some()
         }
+
+        fn mostrar_puntuacion_comprador(&self) -> Result<u8, String> {
+            if self.reputacion_como_comprador.is_empty() {
+                return Err("El usuario no tiene puntuaciones cargadas.".to_string());
+            }
+            let mut total: u8 = self.reputacion_como_comprador.iter().sum();
+            let cantidad = self.reputacion_como_comprador.len() as u8;
+            total = total.checked_div(cantidad).ok_or("Error al dividir.".to_string())?;
+            Ok(total)
+        }
     }
 
 
@@ -531,9 +655,9 @@ mod primer_contrato {
         reputacion_como_vendedor: Vec<u8>,
     }
     impl Vendedor{
-        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32) -> Publicacion {
+        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion {
             //let precio_total = productos_a_publicar.iter().try_fold(0u64, |acc, producto| acc.checked_add(producto.precio)).ok_or("Overflow en suma de precios")?; 
-            let publicacion = Publicacion::crear_publicacion(productos_a_publicar, precio_final, id_publicacion);
+            let publicacion = Publicacion::crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor);
             self.publicaciones.push(id_publicacion);
             publicacion
         }
@@ -549,6 +673,16 @@ mod primer_contrato {
 
         fn es_el_vendedor(&self, id_publicacion: u32) -> bool{
             self.publicaciones.iter().find(|id| **id == id_publicacion).is_some()
+        }
+
+        fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String> {
+            if self.reputacion_como_vendedor.is_empty() {
+                return Err("El usuario no tiene puntuaciones cargadas.".to_string());
+            }
+            let mut total: u8 = self.reputacion_como_vendedor.iter().sum();
+            let cantidad = self.reputacion_como_vendedor.len() as u8;
+            total = total.checked_div(cantidad).ok_or("Error al dividir.".to_string())?;
+            Ok(total)
         }
     }
 
@@ -577,13 +711,15 @@ mod primer_contrato {
         id: u32,
         productos: Vec<(u32, u32)>, // (IDs de los productos, cantidades de ese producto)
         precio_final: u32,
+        id_vendedor:AccountId
     }
     impl Publicacion {
-        fn crear_publicacion(productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32) -> Publicacion{
+        fn crear_publicacion(productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion{
             Publicacion{
                 id: id_publicacion,
                 productos: productos_a_publicar,
                 precio_final,
+                id_vendedor,
             }
         }
     }
@@ -625,22 +761,26 @@ mod primer_contrato {
         id: u32,
         estado: EstadoCompra,
         cancelacion: (bool, bool),  //(vendedor, comprador) //Para estado cancelada
-        info_publicacion: (u32, Vec<(u32, u32)>, u32) // (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion)
+        info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId), // (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor)
+        id_comprador:AccountId,
+        calificaciones: (Option<u8>, Option<u8>), //(calificacion vendedor, calificacion comprador)
     }
     impl OrdenCompra{
         
-        fn crear_orden_de_compra(id_orden: u32, publicacion: Publicacion) -> OrdenCompra{
+        fn crear_orden_de_compra(id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
             let id_publicacion = publicacion.id; //Para mejor legibilidad
             let productos = publicacion.productos;
             let precio_final = publicacion.precio_final;
+            let id_vendedor = publicacion.id_vendedor;
 
-            let info_publicacion = (id_publicacion, productos, precio_final);
+            let info_publicacion = (id_publicacion, productos, precio_final, id_vendedor);
 
             OrdenCompra{
                 id: id_orden,
                 estado: EstadoCompra::Pendiente,
                 cancelacion: (false, false),
                 info_publicacion,
+                id_comprador, 
             }
         }
     }
@@ -949,4 +1089,8 @@ zerofrom = "=0.1.5"
 zerotrie = "=0.2.1"
 zerovec = "=0.10.0"
 
+[toolchain]
+channel = "nightly-2025-07-06"
+
+version de rustc 1.90.0-nightly
 */
