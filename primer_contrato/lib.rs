@@ -180,143 +180,6 @@ mod primer_contrato {
             }
         }
 
-        #[ink(message)]
-        pub fn cancelar_compra(&mut self, id_orden:u32) -> Result<(), String>{
-            let account_id = self.env().caller(); 
-            if let Some(usuario) = self.usuarios.get(account_id){ //busca el usuario
-                for i in 0..self.historial_ordenes_de_compra.len(){
-                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id == id_orden{
-                            let publicacion = orden_de_compra.info_publicacion.clone();
-                            if orden_de_compra.estado != EstadoCompra::Pendiente{
-                                return Err("La compra no puede ser cancelada. No esta en estado pendiente.".to_string())
-                            }
-                            else {
-                                let id_vendedor = orden_de_compra.info_publicacion.3;
-                                let id_comprador = orden_de_compra.id_comprador;
-                                let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
-                                if rol == Rol::Comp{
-                                    orden_de_compra.cancelacion.1 = true;
-                                }
-                                else if orden_de_compra.cancelacion.1{
-                                    orden_de_compra.cancelacion.0 = true;
-                                    orden_de_compra.estado = EstadoCompra::Cancelada;
-                                    self.aumentar_stock(publicacion.1)?; 
-                                }
-                                else {
-                                    return Err("El comprador no desea cancelar la compra.".to_string())
-                                }
-                                let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
-                                return Ok(())
-                            }
-                        }
-                    }
-                }
-                Err("No se encontro la orden de compra.".to_string())
-            }
-            else {
-                Err("No existe el usuario.".to_string()) //si no encontro el usuario devuelve error
-            }
-        }
-
-        #[ink(message)]
-        pub fn calificar(&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
-            if (calificacion < 1) & (calificacion > 5){ //Revisa que la calificacion este en rango
-                return Err("El valor de la calificacion no es valido (1..5).".to_string())
-            }
-            let account_id = self.env().caller(); 
-            if let Some(usuario) = self.usuarios.get(account_id){ //Busca que el usuario exita
-                for i in 0..self.historial_ordenes_de_compra.len(){ //Recorre el vector de ordenes de compra
-                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id_orden == id{ //Si encuentra una orden con la id deseada
-                            let id_comprador = orden_de_compra.id_comprador; //guarda la id del comprador y del vendedor
-                            let id_vendedor = orden_de_compra.info_publicacion.3;
-                            let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?; //revisa que rol cumple el usuario en esta compra (comprador o vendedor)
-
-                            if rol == Rol::Comp{ //si es el comprador
-                                if orden_de_compra.calificaciones.1{ //si el comprador ya califico
-                                    return Err("El comprador ya califico al vendedor.".to_string()) //devuelve error
-                                }
-                                else { //sino califico
-                                    orden_de_compra.calificaciones.1 = true; //modifica la calificacion de la orden (None -> Some(calificacion))
-                                    self.puntuar_vendedor(id_vendedor, calificacion)?; //carga la calificacion en el vendedor
-                                }
-                            }
-                            else { //sino, es el vendedor
-                                if orden_de_compra.calificaciones.0{ //si el vendedor ya califico
-                                    return Err("El vendedor ya califico al comprador.".to_string()) //devuelve error
-                                }
-                                else{ //sino califico
-                                    orden_de_compra.calificaciones.0 = true; //modifica la calificacion de la orden (None -> Some(calificacion))
-                                    self.puntuar_comprador(id_comprador, calificacion)?; //carga la calificacion en el comprador
-                                }
-                            }
-                            self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra)); //sobreescribe el vector de ordenes, con la nueva orden modificada
-                            return Ok(()) //devuelve Ok
-                        }
-                    }    
-                }
-                Err("No se encontro una orden de compra con esa id.".to_string())
-            }
-            else {
-                Err("El usuario no existe".to_string())
-            }
-        }
-
-        #[ink(message)]
-        pub fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String>{
-            let account_id = self.env().caller(); 
-            if let Some(usuario) = self.usuarios.get(account_id){
-                usuario.mostrar_puntuacion_vendedor()
-            }
-            else {
-                Err("El usuario no se encuentra cargado en sistema.".to_string())
-            }
-        }
-
-        #[ink(message)]
-        pub fn mostrar_puntuacion_comprador(&self) -> Result<u8, String>{
-            let account_id = self.env().caller(); 
-            if let Some(usuario) = self.usuarios.get(account_id){
-                usuario.mostrar_puntuacion_comprador()
-            }
-            else {
-                Err("El usuario no se encuentra cargado en sistema.".to_string())
-            }
-        }
-
-        fn puntuar_vendedor(&mut self, id_vendedor: AccountId, calificacion: u8) -> Result<(), String>{
-            if let Some(mut vendedor) = self.usuarios.get(id_vendedor){
-                if let Some(ref mut datos_vendedor) = vendedor.datos_vendedor{
-                    datos_vendedor.reputacion_como_vendedor.push(calificacion);
-                    self.usuarios.insert(id_vendedor, &vendedor);
-                    Ok(())
-                }
-                else{
-                    Err("El vendedor no tiene datos cargados.".to_string())
-                }
-            }
-            else{
-                Err("No existe un vendedor con ese id".to_string())
-            }
-        }
-
-        fn puntuar_comprador(&mut self, id_comprador: AccountId, calificacion: u8) -> Result<(), String>{
-            if let Some(mut comprador) = self.usuarios.get(id_comprador){
-                if let Some(ref mut datos_comprador) = comprador.datos_comprador{
-                    datos_comprador.reputacion_como_comprador.push(calificacion);
-                    self.usuarios.insert(id_comprador, &comprador);
-                    Ok(())
-                }
-                else{
-                    Err("El comprador no tiene datos cargados.".to_string())
-                }
-            }
-            else{
-                Err("No existe un comprador con ese id".to_string())
-            }
-        }
-
         fn calcular_precio_final(&self, productos_publicados: Vec<(u32, u32)>) -> Result<u32, String>{
             let mut total: u32 = 0;
             for (id, cantidad) in productos_publicados{
@@ -352,19 +215,6 @@ mod primer_contrato {
             for (id, cantidad) in productos_cantidades{
                 if let Some ((producto, mut stock)) = self.historial_productos.get(id){
                     stock = stock.checked_sub(cantidad).ok_or("Error al restar stock")?; //siempre va a haber stock minimo sufiente porque se revisa antes con la fn "hay_stock_suficiente"
-                    self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
-                }
-                else {
-                    return Err("No se encontro el producto.".to_string())
-                }
-            }
-            Ok(())
-        }
-
-        fn aumentar_stock(&mut self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
-            for (id, cantidad) in productos_cantidades{
-                if let Some ((producto, mut stock)) = self.historial_productos.get(id){
-                    stock = stock.checked_add(cantidad).ok_or("Error al sumar stock")?;
                     self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
                 }
                 else {
@@ -526,82 +376,6 @@ mod primer_contrato {
                 Err("No hay datos del comprador.".to_string())
             }
         }
-
-        fn comprobar_rol(&self, id_vendedor: AccountId, id_comprador: AccountId) -> Result<Rol, String>{
-            match self.rol{
-                Rol::Vend => {
-                    if let Some(ref _datos_vendedor) = self.datos_vendedor{
-                        if self.es_el_vendedor(id_vendedor){
-                            Ok(Rol::Vend)
-                        }
-                        else {
-                            Err("El vendedor no posee esta publicacion.".to_string())
-                        }
-                    }
-                    else {
-                        Err("El vendedor no tiene datos cargados.".to_string())
-                    }
-                },
-
-                Rol::Comp => {
-                    if let Some(ref _datos_comprador) = self.datos_comprador{
-                        if self.es_el_comprador(id_comprador){
-                            Ok(Rol::Comp)
-                        }
-                        else{
-                            Err("El usuario no posee esa orden de compra.".to_string())
-                        }
-                    }
-                    else {
-                        Err("El comprador no tiene datos cargados.".to_string())
-                    }
-                },
-
-                Rol::Ambos => {
-                    if self.es_el_vendedor(id_vendedor) {
-                        Ok(Rol::Vend)
-                    }
-                    else if self.es_el_comprador(id_comprador) {
-                        Ok(Rol::Comp)
-                    }
-                    else {
-                       Err("El usuario no participa de la compra.".to_string())
-                    }
-                },
-            }
-        }
-
-        fn es_el_vendedor(&self, id_vendedor: AccountId) -> bool{
-            id_vendedor == self.id_usuario
-        }
-
-        fn es_el_comprador(&self, id_comprador: AccountId) -> bool{
-            id_comprador == self.id_usuario
-        }
-
-        fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String>{
-            if self.rol == Rol::Comp{
-                Err("El usuario no posee el rol vendedor".to_string())
-            }
-            else if let Some(ref datos_vendedor) = self.datos_vendedor{
-                datos_vendedor.mostrar_puntuacion_vendedor()
-            }
-            else{
-                Err("El vendedor no tiene datos cargados".to_string())
-            }
-        }
-
-        fn mostrar_puntuacion_comprador(&self) -> Result<u8, String>{
-            if self.rol == Rol::Vend{
-                Err("El usuario no posee el rol comprador".to_string())
-            }
-            else if let Some(ref datos_comprador) = self.datos_comprador{
-                datos_comprador.mostrar_puntuacion_comprador()
-            }
-            else{
-                Err("El comprador no tiene datos cargados".to_string())
-            }
-        }
     }
 
 
@@ -630,15 +404,6 @@ mod primer_contrato {
             }
         }
 
-        fn mostrar_puntuacion_comprador(&self) -> Result<u8, String> {
-            if self.reputacion_como_comprador.is_empty() {
-                return Err("El usuario no tiene puntuaciones cargadas.".to_string());
-            }
-            let mut total: u8 = self.reputacion_como_comprador.iter().sum();
-            let cantidad = self.reputacion_como_comprador.len() as u8;
-            total = total.checked_div(cantidad).ok_or("Error al dividir.".to_string())?;
-            Ok(total)
-        }
     }
 
 
@@ -667,15 +432,6 @@ mod primer_contrato {
             }
         }
 
-        fn mostrar_puntuacion_vendedor(&self) -> Result<u8, String> {
-            if self.reputacion_como_vendedor.is_empty() {
-                return Err("El usuario no tiene puntuaciones cargadas.".to_string());
-            }
-            let mut total: u8 = self.reputacion_como_vendedor.iter().sum();
-            let cantidad = self.reputacion_como_vendedor.len() as u8;
-            total = total.checked_div(cantidad).ok_or("Error al dividir.".to_string())?;
-            Ok(total)
-        }
     }
 
 
