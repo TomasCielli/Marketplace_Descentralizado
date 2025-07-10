@@ -923,54 +923,6 @@ mod primer_contrato {
         }
     }
 
-/////////////////////////// INFO ///////////////////////////
 
-    /* ----------------------Importante-O-No---------------------------------*/
-    /*Documentacion de ink*/
-    /*https://docs.rs/ink_env/4.3.0/ink_env/index.html#modules*/
-    // Cosas de los contratos
-
-    /*Development Accounts
-    The alice development account will be the authority and sudo account as declared in the genesis state. While at the same time, the following accounts will be pre-funded:
-
-    Alice
-    Bob
-    Charlie
-    Dave
-    Eve
-    Ferdie
-
-
-    estas son las cuentas que se deberian permitir en la zona de test  
-
-    compilar o hacer cargo test me genero un monton de quilombos tuve que actualizar varias cosas 
-    el comando para probar los test es:= cargo test -- --nocapture
-
-
-    agrege esto en dependencia
-    [patch.crates-io]
-    backtrace = "=0.3.74"
-    icu_collections = "=1.4.0"
-    icu_locale_core = "=1.4.0"
-    icu_normalizer = "=1.4.0"
-    icu_normalizer_data = "=1.4.0"
-    icu_properties = "=1.4.0"
-    icu_properties_data = "=1.4.0"
-    icu_provider = "=1.4.0"
-    idna_adapter = "=1.1.0"
-    litemap = "=0.7.0"
-    potential_utf = "=0.1.1"
-    tinystr = "=0.7.0"
-    writeable = "=0.5.0"
-    yoke = "=0.7.0"
-    zerofrom = "=0.1.5"
-    zerotrie = "=0.2.1"
-    zerovec = "=0.10.0"
-
-    [toolchain]
-    channel = "nightly-2025-07-06"
-
-    version de rustc 1.90.0-nightly
-    */
 
 }
