@@ -1,40 +1,38 @@
 //COMPILA
 
-/* 
-    IMPORTANTE
+/////////////////////////// IMPORTANTE ///////////////////////////
+    /* 
+            ACTUALIZACION / TOMAS /
 
-        ACTUALIZACION / TOMAS /
-
-            1) Nombre de los roles -> Ambos, Vend, Comp //Para evitar warnings
-            2) Correccion de todos los warnings
-            3) Cambios en comprobar_rol //Ahora maneja los ids de vendedor y comprador directamente
-            4) Limitar rango de calificacion (1..5)
-            5) Limitar la cantidad de calificaciones por compra (una para cada uno). Cambios en calificar, CHEKEAR!
+                1) Nombre de los roles -> Ambos, Vend, Comp //Para evitar warnings
+                2) Correccion de todos los warnings
+                3) Cambios en comprobar_rol //Ahora maneja los ids de vendedor y comprador directamente
+                4) Limitar rango de calificacion (1..5)
+                5) Limitar la cantidad de calificaciones por compra (una para cada uno). Cambios en calificar, CHEKEAR!
 
 
-        PERSISTENCIA DE DATOS
+            PERSISTENCIA DE DATOS
 
-            1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
-            2) Los datos simples solo persitirán si son variables del struct con la etiqueta #[ink(Storage)]
-            3) Solo las estructuras StorageVec y Mapping persistirán su información. 
-            4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
-                Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
+                1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
+                2) Los datos simples solo persitirán si son variables del struct con la etiqueta #[ink(Storage)]
+                3) Solo las estructuras StorageVec y Mapping persistirán su información. 
+                4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
+                    Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
 
-        DATOS SOBRE MAPPING Y STORAGEVEC
+            DATOS SOBRE MAPPING Y STORAGEVEC
 
-            1) El .get() devuelve una copia del elemento, no se pierde la propiedad. Si se quiere modificar la estructura se debe pisar el valor anterior.
+                1) El .get() devuelve una copia del elemento, no se pierde la propiedad. Si se quiere modificar la estructura se debe pisar el valor anterior.
 
-        CONSULTAS:
-        
-            1) Los productos deben estar previamente cargados en sistema? 
-            2) Puede haber productos (con o sin stock) que no esten en publicaciones? //repreguntar
-            3) Que es la categoria del producto?: Enum o String
-            4) LINEA 75. Hay que sobreescribir los datos del mapping de usuario (este fue modificado)?
-            5) LINEA 219. Amerita error?
-            6) La cancelacion devuelve stock a su valor anterior?
-            7) Cargo test no funciona
-
-*/
+            CONSULTAS:
+            
+                1) Los productos deben estar previamente cargados en sistema? 
+                2) Puede haber productos (con o sin stock) que no esten en publicaciones? //repreguntar
+                3) Que es la categoria del producto?: Enum o String
+                4) LINEA 75. Hay que sobreescribir los datos del mapping de usuario (este fue modificado)?
+                5) LINEA 219. Amerita error?
+                6) La cancelacion devuelve stock a su valor anterior?
+                7) Cargo test no funciona
+    */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #![allow(non_local_definitions)]
