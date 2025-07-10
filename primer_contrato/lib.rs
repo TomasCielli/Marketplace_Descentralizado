@@ -2,15 +2,6 @@
 
 /////////////////////////// IMPORTANTE ///////////////////////////
     /* 
-            ACTUALIZACION / TOMAS /
-
-                1) Nombre de los roles -> Ambos, Vend, Comp //Para evitar warnings
-                2) Correccion de todos los warnings
-                3) Cambios en comprobar_rol //Ahora maneja los ids de vendedor y comprador directamente
-                4) Limitar rango de calificacion (1..5)
-                5) Limitar la cantidad de calificaciones por compra (una para cada uno). Cambios en calificar, CHEKEAR!
-
-
             PERSISTENCIA DE DATOS
 
                 1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
@@ -19,19 +10,6 @@
                 4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
                     Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
 
-            DATOS SOBRE MAPPING Y STORAGEVEC
-
-                1) El .get() devuelve una copia del elemento, no se pierde la propiedad. Si se quiere modificar la estructura se debe pisar el valor anterior.
-
-            CONSULTAS:
-            
-                1) Los productos deben estar previamente cargados en sistema? 
-                2) Puede haber productos (con o sin stock) que no esten en publicaciones? //repreguntar
-                3) Que es la categoria del producto?: Enum o String
-                4) LINEA 75. Hay que sobreescribir los datos del mapping de usuario (este fue modificado)?
-                5) LINEA 219. Amerita error?
-                6) La cancelacion devuelve stock a su valor anterior?
-                7) Cargo test no funciona
     */
 
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
@@ -50,8 +28,8 @@ mod primer_contrato {
         usuarios: Mapping<AccountId, Usuario>, //Se persiste la información de los usuarios. 
         historial_publicaciones: StorageVec<(u32, Publicacion)>, //(id, publicacion) //Se persisten las publicaciones realizadas.
         historial_productos: Mapping<u32, (Producto, u32)>, // <id, (producto, stock)> //Se persisten los productos de mis sistema.
-        historial_ordenes_de_compra: StorageVec<(u32, OrdenCompra)>, //(id, orden)
-        value: bool, //Si borras esto se rompe todo. En serio, fijate. (Hay que sacarle las fn, algún día se hará).  
+        historial_ordenes_de_compra: StorageVec<(u32, OrdenCompra)>, //(id, orden)  
+        dimension_logica_productos: u32, //cantidad de productos, primero suma despues usa la id
     }
     impl PrimerContrato {
 
@@ -62,7 +40,7 @@ mod primer_contrato {
                 historial_publicaciones: StorageVec::new(),
                 historial_productos: Mapping::default(),
                 historial_ordenes_de_compra:  StorageVec::new(),
-                value: false,                //lo dejamos xq explota
+                dimension_logica_productos: 0,
             }
         }
 
@@ -75,6 +53,24 @@ mod primer_contrato {
                 let usuario = Usuario::nuevo(account_id, nombre, apellido, direccion, email, rol);  // generamos el usuario
                 self.usuarios.insert(account_id, &usuario); // lo metemos en el  hashmap/mapping de usuarios 
                 Ok(())
+            }
+        }
+
+        #[ink(message)]
+        pub fn cargar_producto(&mut self, nombre: String, descripcion: String, precio: u32, categoria: String, stock: u32) -> Result<(), String>{
+            let account_id = self.env().caller();
+            if let Some(usuario) = self.usuarios.get(account_id){
+                if (usuario.rol == Rol::Vend) | (usuario.rol == Rol::Ambos){
+                    self.dimension_logica_productos = self.dimension_logica_productos.checked_add(1).ok_or("Error al sumar.")?;
+                    self.historial_productos.insert(self.dimension_logica_productos, &(Producto::cargar_producto(self.dimension_logica_productos, nombre, descripcion, precio, categoria), stock));
+                    Ok(())
+                }
+                else {
+                    Err("El usuario no tiene permisos para cargar productos. No es vendedor.".to_string())
+                }
+            }
+            else {
+                Err("No existe el usuario.".to_string())
             }
         }
 
@@ -168,7 +164,7 @@ mod primer_contrato {
                     if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
                         if id == id_orden { //si encuentra la orden
                             if orden_de_compra.estado != EstadoCompra::Enviado{
-                                return Err("El producto todavia ni fue enviado master, espera unos dias maquinola".to_string());
+                                return Err("El producto todavia no fue enviado.".to_string());
                             }
                             usuario.recibir_compra(id_orden)?; //continua sino, error
                             orden_de_compra.estado = EstadoCompra::Recibido;
@@ -185,7 +181,7 @@ mod primer_contrato {
         }
 
         #[ink(message)]
-        pub fn cancelar_compra(&mut self, id_orden:u32) -> Result<(), String>{ // <------- FALTA TERMINAR
+        pub fn cancelar_compra(&mut self, id_orden:u32) -> Result<(), String>{
             let account_id = self.env().caller(); 
             if let Some(usuario) = self.usuarios.get(account_id){ //busca el usuario
                 for i in 0..self.historial_ordenes_de_compra.len(){
@@ -205,7 +201,7 @@ mod primer_contrato {
                                 else if orden_de_compra.cancelacion.1{
                                     orden_de_compra.cancelacion.0 = true;
                                     orden_de_compra.estado = EstadoCompra::Cancelada;
-                                    self.aumentar_stock(publicacion.1)?;  //PREGUNTAR 
+                                    self.aumentar_stock(publicacion.1)?; 
                                 }
                                 else {
                                     return Err("El comprador no desea cancelar la compra.".to_string())
@@ -223,42 +219,6 @@ mod primer_contrato {
             }
         }
 
-        //Version vieja
-        /*#[ink(message)]
-        pub fn calificar(&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
-            if (calificacion < 1) & (calificacion > 5){
-                return Err("El valor de la calificacion no es valido (1..5).".to_string())
-            }
-            let account_id = self.env().caller(); 
-            if let Some(usuario) = self.usuarios.get(account_id){
-                for i in 0..self.historial_ordenes_de_compra.len(){
-                    if let Some((id, orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id_orden == id{
-                            let id_comprador = orden_de_compra.id_comprador;
-                            let id_vendedor = orden_de_compra.info_publicacion.3;
-                            let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
-                            if rol == Rol::Comp{
-                                if 
-                                let id_vendedor = orden_de_compra.info_publicacion.3;
-                                self.puntuar_vendedor(id_vendedor, calificacion)?;
-                                return Ok(())
-                            }
-                            else { //es el vendedor
-                                let id_comprador = orden_de_compra.id_comprador;
-                                self.puntuar_comprador(id_comprador, calificacion)?;
-                                return Ok(())
-                            }
-
-                        }
-                    }    
-                }
-                Err("No se encontro una orden de compra con esa id.".to_string())
-            }
-            else {
-                Err("El usuario no existe".to_string())
-            }
-        }*/
-
         #[ink(message)]
         pub fn calificar(&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
             if (calificacion < 1) & (calificacion > 5){ //Revisa que la calificacion este en rango
@@ -274,20 +234,20 @@ mod primer_contrato {
                             let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?; //revisa que rol cumple el usuario en esta compra (comprador o vendedor)
 
                             if rol == Rol::Comp{ //si es el comprador
-                                if orden_de_compra.calificaciones.1.is_some(){ //si el comprador ya califico
+                                if orden_de_compra.calificaciones.1{ //si el comprador ya califico
                                     return Err("El comprador ya califico al vendedor.".to_string()) //devuelve error
                                 }
                                 else { //sino califico
-                                    orden_de_compra.calificaciones.1 = Some(calificacion); //modifica la calificacion de la orden (None -> Some(calificacion))
+                                    orden_de_compra.calificaciones.1 = true; //modifica la calificacion de la orden (None -> Some(calificacion))
                                     self.puntuar_vendedor(id_vendedor, calificacion)?; //carga la calificacion en el vendedor
                                 }
                             }
                             else { //sino, es el vendedor
-                                if orden_de_compra.calificaciones.0.is_some(){ //si el vendedor ya califico
+                                if orden_de_compra.calificaciones.0{ //si el vendedor ya califico
                                     return Err("El vendedor ya califico al comprador.".to_string()) //devuelve error
                                 }
                                 else{ //sino califico
-                                    orden_de_compra.calificaciones.0 = Some(calificacion); //modifica la calificacion de la orden (None -> Some(calificacion))
+                                    orden_de_compra.calificaciones.0 = true; //modifica la calificacion de la orden (None -> Some(calificacion))
                                     self.puntuar_comprador(id_comprador, calificacion)?; //carga la calificacion en el comprador
                                 }
                             }
@@ -692,8 +652,7 @@ mod primer_contrato {
         reputacion_como_vendedor: Vec<u8>,
     }
     impl Vendedor{
-        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion {
-            //let precio_total = productos_a_publicar.iter().try_fold(0u64, |acc, producto| acc.checked_add(producto.precio)).ok_or("Overflow en suma de precios")?; 
+        fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion { 
             let publicacion = Publicacion::crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor);
             self.publicaciones.push(id_publicacion);
             publicacion
@@ -770,6 +729,18 @@ mod primer_contrato {
         precio: u32,
         categoria:String,
     }
+    impl Producto{
+        fn cargar_producto(id: u32, nombre: String, descripcion: String, precio: u32, categoria: String) -> Producto{
+            let categoria_limpia = categoria.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
+            Producto{
+                id,
+                nombre,
+                descripcion,
+                precio,
+                categoria: categoria_limpia,
+            }
+        }
+    }
 
 /////////////////////////// ORDEN DE COMPRA ///////////////////////////
 
@@ -782,7 +753,7 @@ mod primer_contrato {
         cancelacion: (bool, bool),  //(vendedor, comprador) //Para estado cancelada
         info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId), // (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor)
         id_comprador:AccountId,
-        calificaciones: (Option<u8>, Option<u8>), //(Calificacion Vendedor, Calificacion Comprador)
+        calificaciones: (bool, bool), //(Calificacion Vendedor, Calificacion Comprador)
     }
     impl OrdenCompra{
         
@@ -792,7 +763,7 @@ mod primer_contrato {
             let precio_final = publicacion.precio_final;
             let id_vendedor = publicacion.id_vendedor;
             let info_publicacion = (id_publicacion, productos, precio_final, id_vendedor);
-            let calificaciones = (None, None);
+            let calificaciones = (false, false);
 
             OrdenCompra{
                 id: id_orden,
