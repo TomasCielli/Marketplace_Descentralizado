@@ -1,17 +1,3 @@
-//COMPILA
-
-/////////////////////////// IMPORTANTE ///////////////////////////
-    /* 
-            PERSISTENCIA DE DATOS
-
-                1) Los datos que persistirán son solo aquellos bajo la etiqueta #[ink(storage)].
-                2) Los datos simples solo persitirán si son variables del struct con la etiqueta #[ink(Storage)]
-                3) Solo las estructuras StorageVec y Mapping persistirán su información. 
-                4) Si se modifica un tipo de dato Vec o HashMap, se debe sobreescribir el respectivo Mapping o StorageVec.
-                    Ej: Modifico Usuario, debo reinsertarlo en el Mapping del Sistema. 
-
-    */
-
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #![allow(non_local_definitions)]
 
@@ -23,17 +9,24 @@ mod primer_contrato {
     use ink::prelude::string::{String, ToString};
 
 /////////////////////////// SISTEMA ///////////////////////////
+    /// Struct que hace de "sistema". Encargado de persistir los datos. 
+    /// Los usuarios se almacenan en un Mapping. La clave es el AccountId, y su contenido los datos del usuario.
+    /// Las publicaciones realizadas se almacenan en un StorageVec, cuyo contenido es una tupla con el id de la publicación, y los datos de la misma. (id, publicacion).
+    /// Los productos se almacenan en un Mapping. Donde la clave es el id del producto. y su contenido es una tupla que contiene los datos del producto y el stock de éste. <id, (producto, stock)>. 
+    /// Las ordenes de compra se almacenan en un StorageVec. Cuyo contenido es una tupla con el id de la orden y los datos de la misma. (id, orden)   
+    /// Por último se encuentra la dimensión lógica de "historial_productos" utilizada para definir la id de los productos que se agregan al sistema. 
     #[ink(storage)]
     pub struct PrimerContrato {
-        usuarios: Mapping<AccountId, Usuario>, //Se persiste la información de los usuarios. 
-        historial_publicaciones: StorageVec<(u32, Publicacion)>, //(id, publicacion) //Se persisten las publicaciones realizadas.
-        historial_productos: Mapping<u32, (Producto, u32)>, // <id, (producto, stock)> //Se persisten los productos de mis sistema.
-        historial_ordenes_de_compra: StorageVec<(u32, OrdenCompra)>, //(id, orden)  
-        dimension_logica_productos: u32, //cantidad de productos, primero suma despues usa la id
+        usuarios: Mapping<AccountId, Usuario>,
+        historial_publicaciones: StorageVec<(u32, Publicacion)>, 
+        historial_productos: Mapping<u32, (Producto, u32)>, 
+        historial_ordenes_de_compra: StorageVec<(u32, OrdenCompra)>,   
+        dimension_logica_productos: u32, 
     }
     impl PrimerContrato {
 
         #[ink(constructor)]
+        /// Contructor del sistema. Inicializa todo en default/new, y la dimensión logica de los productos en cero. 
         pub fn new() -> Self {
             Self {
                 usuarios: Mapping::default(),
@@ -45,6 +38,8 @@ mod primer_contrato {
         }
 
         #[ink(message)]
+        /// La función agregar_usuario_sistema se encarga de registrar el usuario en mi sistema (se almacena en "usuarios"). 
+        /// Solo será registrado si su ID no se halla en mi Mapping de usuarios. 
         pub fn agregar_usuario_sistema(&mut self, nombre: String, apellido: String, direccion: String, email: String, rol: Rol) -> Result <(), String>{
             let account_id = self.env().caller();
             self.priv_agregar_usuario_sistema(account_id, nombre, apellido, direccion, email, rol)
@@ -53,12 +48,14 @@ mod primer_contrato {
             if self.usuarios.get(account_id).is_some(){
                 Err("El usuario ya esta registrado.".to_string())
             } else {
-                let usuario = Usuario::nuevo(account_id, nombre, apellido, direccion, email, rol);  // generamos el usuario
-                self.usuarios.insert(account_id, &usuario); // lo metemos en el  hashmap/mapping de usuarios 
+                let usuario = Usuario::nuevo(account_id, nombre, apellido, direccion, email, rol);
+                self.usuarios.insert(account_id, &usuario); 
                 Ok(())
             }
         }
 
+        /// La función cargar_producto se encarga de registrar el producto en mi sistema (se almacena en "historial_productos"). 
+        /// Se comprueba que el usuario que invoca la función esté registrado en mi sistema. Si lo está, se comprueba su rol. Si el usuario tiene rol vendedor u ambos, se le asigna un id al producto y luego es agregado a su estructura correspondiente. 
         #[ink(message)]
         pub fn cargar_producto(&mut self, nombre: String, descripcion: String, precio: u32, categoria: String, stock: u32) -> Result<(), String>{
             let account_id = self.env().caller();
@@ -80,6 +77,12 @@ mod primer_contrato {
             }
         }
 
+        /// La función "crear_publicacion" se encarga de crear la publicación y luego registrarla en mi sistema (se almacena en "historial_publicaciones"). 
+        /// Primero se comprueba que el usuario que invocó la función exista en mi sistema. En caso de no estar se retorna un error.
+        /// Si el usuario existe, se asigna el id de la publicación, se calcula su precio final, luego se crea la publicación delegando su creación al usuario.
+        /// Una vez creada la publicación es agregada a mi sistema ("historial_publicaciones"). 
+        /// Luego el usuario se reinserta en mis sistema debido a que en su método "crear_publicación" su estado fue modificado.
+        /// Finalmente se retorna Ok, si todo ha salido bien. Indicando que la operación fue un éxito. 
         #[ink(message)]
         pub fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
             let account_id = self.env().caller();
@@ -87,11 +90,13 @@ mod primer_contrato {
         }
         fn priv_crear_publicacion(&mut self, account_id: AccountId, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
             if let Some(mut usuario) = self.usuarios.get(account_id){
+                self.hay_stock_suficiente(productos_a_publicar.clone())?; //REVISA STOCK SUFICIENTE
                 let id_publicacion = self.historial_publicaciones.len();
                 let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
-                let publicacion = usuario.crear_publicacion(productos_a_publicar, precio_final, id_publicacion, account_id)?;
+                let publicacion = usuario.crear_publicacion(productos_a_publicar.clone(), precio_final, id_publicacion, account_id)?;
+                self.descontar_stock(productos_a_publicar)?; // DESCUENTA STOCK
                 self.historial_publicaciones.push(&(id_publicacion, publicacion));
-                self.usuarios.insert(account_id, &usuario); //lo sobreescribe
+                self.usuarios.insert(account_id, &usuario);
                 Ok(())
             }
             else {
@@ -102,21 +107,28 @@ mod primer_contrato {
         
         
         #[ink(message)]
+        /// La función "visualizar_productos_de_publicación" se encarga de retornar todos los datos de una publicación especifica (id) recibida por parámetro. 
+        /// Recorro todo mi StorageVec en busca de la publicación deseada. Hasta encontrar la id correspondiente al producto buscado o hasta terminar de iterar sobre él. Si termina la iteración significa que no se encontró el producto con la id recibida, entonces terminando la función y retornando un error. 
+        /// Si se halló el producto se clona los datos y son retornados en un Ok, indicando que la operación de búsqueda fue existosa. 
         pub fn visualizar_productos_de_publicacion(&self, id_publicacion: u32) -> Result<Publicacion, String> {
             self.priv_visualizar_productos_de_publicacion(id_publicacion)
         }
         fn priv_visualizar_productos_de_publicacion(&self, id_publicacion: u32) -> Result<Publicacion, String> {
-            for i in 0..self.historial_publicaciones.len() { // desde 0 a dimF (la longitud del vec)
-                if let Some((id, publicacion)) = self.historial_publicaciones.get(i) { //si hay un elemento cargado en la posicion
-                    if id == id_publicacion {  //revisa que tenga el mismo id
-                        return Ok(publicacion.clone()); //devuelve la publicacion
+            for i in 0..self.historial_publicaciones.len() {
+                if let Some((id, publicacion)) = self.historial_publicaciones.get(i) {
+                    if id == id_publicacion { 
+                        return Ok(publicacion.clone());
                     }
                 }
             }
-            Err("No se encontro la publicacion.".to_string()) //sino, devuelve error
+            Err("No se encontro la publicacion.".to_string())
         }
 
         #[ink(message)]
+        /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
+        /// Primero se comprueba que el usuario esté en mi sistema. En caso de no estarlo, se retorna un error. 
+        /// Si el usuario se encuentra en mi sistema, se delega el cambio de estado al usuario. Si el rol recibido por parametro, es igual al que posee el usuario se retorna error.
+        /// Si el rol fue efectivamente modificado se vuelve a insertar en el Mapping de usuarios del sistema debido a que su estado se alteró. Retornando Ok, indicando el éxito de la operación.
         pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_modificar_rol(account_id, nuevo_rol)
@@ -131,8 +143,16 @@ mod primer_contrato {
                 Err("No existe el usuario.".to_string())
             }
         }
-        
+         
         #[ink(message)]
+        /// La función crear_orden_de_compra se encarga de crear una orden de compra de una publicación recibida por parametro.
+        /// Primero se comprueba que el usuario que invoca la función se encuentra en mi sistema. En caso de no estarlo, se retorna error.
+        /// Luego se comprueba si el stock de la publicación es suficiente con el que posee el vendedor de los productos indicados en la publicación. Si no hay suficiente, se cancela la creación de la orden, retornando el error correspondiente.
+        /// Se crea el id de la orden.
+        /// Se delega la creación de la orden al usuario. Si la creación de la orden fue un éxito se sigue, sino se retorna el error apropidado. 
+        /// Se descuenta el stock de los productos vendidos. 
+        /// Se agrega la orden de compra a mi sistema.
+        /// Por último se reinserta el usuario debido a que su estado interno ha sido modificado en el transcurso de la función. Retornando un Ok, indicando el éxito de la operación. 
         pub fn crear_orden_de_compra(&mut self, id_publicacion: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_crear_orden_de_compra(account_id, id_publicacion)
@@ -140,12 +160,13 @@ mod primer_contrato {
         fn priv_crear_orden_de_compra(&mut self, account_id: AccountId, id_publicacion: u32) -> Result<(), String>{
             if let Some(mut usuario) = self.usuarios.get(account_id){
                 let publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
-                self.hay_stock_suficiente(publicacion.productos.clone())?; //si hay stock devuelve error, termina la funcion. Sino sigue ejecutando
-                let id_orden = self.historial_ordenes_de_compra.len(); //guarda la id
-                let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?; // <---- Que revise el stock primero
-                self.descontar_stock(publicacion.productos)?; //descuenta el stock del producto
+                if (usuario.rol == Rol::Vend) | (account_id == publicacion.id_vendedor){
+                    return Err("El usuario no puede realizar la compra.".to_string())
+                }
+                let id_orden = self.historial_ordenes_de_compra.len();
+                let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?;
                 self.historial_ordenes_de_compra.push(&(id_orden, orden_de_compra));
-                self.usuarios.insert(account_id, &usuario); //sobreescribe el usuario en el mapping
+                self.usuarios.insert(account_id, &usuario);
                 Ok(())  
             }
             else {
@@ -153,6 +174,11 @@ mod primer_contrato {
             }
         }
         
+        /// Funcion para enviar una compra.
+        /// Revisa que el usuario este cargado en sistema.
+        /// Revisa que la orden de compra este cargada en sistema.
+        /// Llama a la funcion de Usuario.
+        /// Sobreescribe la orden en el sistema.
         #[ink(message)]
         pub fn enviar_compra(&mut self, id_orden: u32) -> Result<(), String>{
             let account_id = self.env().caller();
@@ -163,6 +189,9 @@ mod primer_contrato {
                 for i in 0..self.historial_ordenes_de_compra.len() {
                     if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
                         if id == id_orden {
+                            if orden_de_compra.estado != EstadoCompra::Pendiente{
+                                return Err("El producto no puede ser enviado.".to_string());
+                            }
                             let id_publicacion = orden_de_compra.info_publicacion.0;
                             usuario.enviar_compra(id_publicacion)?;
                             orden_de_compra.estado = EstadoCompra::Enviado;
@@ -178,33 +207,43 @@ mod primer_contrato {
             }
         }
         
+        /// Funcion para recibir una compra.
+        /// Revisa que el usuario este cargado en sistema.
+        /// Revisa que la orden de compra este cargada en sistema.
+        /// Revisa que la orden no haya sido enviada.
+        /// Llama a la funcion de Usuario.
+        /// Sobreescribe la orden en el sistema. 
         #[ink(message)]
         pub fn recibir_compra(&mut self, id_orden: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_recibir_compra(account_id, id_orden)
         }
         fn priv_recibir_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{ 
-            if let Some(usuario) = self.usuarios.get(account_id){ //busca el usuario
-                for i in 0..self.historial_ordenes_de_compra.len() { //recorre las ordenes
+            if let Some(usuario) = self.usuarios.get(account_id){
+                for i in 0..self.historial_ordenes_de_compra.len() {
                     if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id == id_orden { //si encuentra la orden
+                        if id == id_orden {
                             if orden_de_compra.estado != EstadoCompra::Enviado{
                                 return Err("El producto todavia no fue enviado.".to_string());
                             }
-                            usuario.recibir_compra(id_orden)?; //continua sino, error
+                            usuario.recibir_compra(id_orden)?;
                             orden_de_compra.estado = EstadoCompra::Recibido;
                             let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
                             return Ok(())
                         }
                     }
                 }
-                Err("No existe la orden buscada.".to_string()) //si no encontro la orden devuelve error
+                Err("No existe la orden buscada.".to_string())
             }
             else {
-                Err("No existe el usuario.".to_string()) //si no encontro el usuario devuelve error
+                Err("No existe el usuario.".to_string())
             }
         }
 
+        //  Fn calcular_precio final  va a recibir los productos de la publicacion y va a prodecer a realizar 
+        //  la suma de los valores de los productos
+        //  esto retorna el valor total 
+        //  y se chequea que no ocurra overflow como caso de error  
         fn calcular_precio_final(&self, productos_publicados: Vec<(u32, u32)>) -> Result<u32, String>{
             let mut total: u32 = 0;
             for (id, cantidad) in productos_publicados{
@@ -221,26 +260,34 @@ mod primer_contrato {
         }
 
       
+        // Fn hay_stock_suficiente  recibe los productos y las cantidades  en un vec  y va a devolver si hay stock suficente o no 
+        //  se va a recorrer el vector de productos buscando los productos para descontrar el stock y pueden haber los sigientes errores   // 
+        // errores 
+        // se encuentra el producto si hay stock continua, pero si no hay stock suficiente y devuelve error 
+        // el producto puede no estas cargado en el sistema historial de productos 
         fn hay_stock_suficiente(&self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
-            for (id, cantidad) in productos_cantidades{ //recorremos el vector de productos y cantidades
-                if let Some((_producto, stock)) = self.historial_productos.get(id){ //si encuentra el producto
-                    if stock < cantidad{ //y el stock es menor
-                        return Err("No hay stock suficiente.".to_string()) //devuelve error
+            for (id, cantidad) in productos_cantidades{
+                if let Some((_producto, stock)) = self.historial_productos.get(id){
+                    if stock < cantidad{
+                        return Err("No hay stock suficiente.".to_string())
                     }
                 }
                 else{
-                    return Err("No se encontro el producto.".to_string()) //si no encuentra el producto en el mapping tambien devuelve error
+                    return Err("No se encontro el producto.".to_string())
                 }
             }
-            Ok(()) //si no sale por ninguna de las opciones anterios esta todo Ok, devuelve Ok
+            Ok(())
         }
         
-        
+        /// Funcion para descontar el stock en sistema de un cierto producto. Llamada dentro de la funcion "crear_orden_de_compra"
+        /// Revisa que el producto este cargado en sistema.
+        /// Resta el stock. Siempre habra stock minimo suficiente ya que se revisara con la funcion "hay_stock_suficiente".
+        /// Sobreescribe el producto con su nuevo stock.
         fn descontar_stock(&mut self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
             for (id, cantidad) in productos_cantidades{
                 if let Some ((producto, mut stock)) = self.historial_productos.get(id){
-                    stock = stock.checked_sub(cantidad).ok_or("Error al restar stock")?; //siempre va a haber stock minimo sufiente porque se revisa antes con la fn "hay_stock_suficiente"
-                    self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
+                    stock = stock.checked_sub(cantidad).ok_or("Error al restar stock")?;
+                    self.historial_productos.insert(id, &(producto, stock));
                 }
                 else {
                     return Err("No se encontro el producto.".to_string())
@@ -260,6 +307,15 @@ mod primer_contrato {
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct que almacena la información de un usuario. 
+    /// id_usuario almacena el id.
+    /// nombre almacena su nombre.
+    /// apellido almacena su apellido.
+    /// dirección almacena su dirección.
+    /// email almacena su email.
+    /// rol almacena el rol que tiene el usuario. Éste puede ser: Comp (comprador), Vend (vendedor), Ambos. 
+    /// datos_comprador almacena toda la información correspondiente al rol comprador. El Option será Some cuando éste posea el rol Comp u Ambos. Si en algún momento deja de serlo, el Option seguirá en Some con toda la información.  
+    /// datos_vendedor almacena toda la información correspondiente al rol vendedor. El Option será Some cuando éste posea el rol Vend u Ambos. Si en algún momento deja de serlo, el Option seguirá en Some con toda la información.  
     struct Usuario{
         id_usuario: AccountId,
         nombre: String,
@@ -272,6 +328,11 @@ mod primer_contrato {
     }
     impl Usuario {
         
+        /// Funcion que permite crear un nuevo usuario, cargandole los datos correspondientes a este.
+        /// Revisa el lol del usuario e inicaliza los datos correspondientes:
+        /// Si es Comp -> datos_comprador = Some()
+        /// Si es Vend -> datos_vendedor = Some()
+        /// Si es Ambos -> datos_comprador = Some(), datos_vendedor = Some()
         pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol) -> Usuario {
             Usuario {
                 id_usuario: id,
@@ -281,14 +342,14 @@ mod primer_contrato {
                 email,
                 rol: rol.clone(),
                 datos_comprador: match rol {
-                    Rol::Comp | Rol::Ambos => Some(Comprador {         // si el rol es comprador o ambos se inicializan 
+                    Rol::Comp | Rol::Ambos => Some(Comprador { 
                         ordenes_de_compra: Vec::new(),
                         reputacion_como_comprador: Vec::new(),
                     }),
                     _ => None,
                 },
                 datos_vendedor: match rol {
-                    Rol::Vend | Rol::Ambos => Some(Vendedor {            // si el rol es Vendedor o ambos se inicializan
+                    Rol::Vend | Rol::Ambos => Some(Vendedor {
                         productos: Vec::new(),
                         publicaciones: Vec::new(),
                         reputacion_como_vendedor: Vec::new(),
@@ -298,6 +359,10 @@ mod primer_contrato {
             }
         }
 
+        
+        /// Funcion que permite crear una publicacion. Llamada por sistema.
+        /// Revisa que el usuario tenga el rol Vend o Ambos
+        /// Llama a la funcion de Vendedor
         fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Result<Publicacion, String>{  //productos_a_publicar = Vec<(id, cantidad)>
             if self.rol == Rol::Comp {
                 Err("El usuario no es vendedor.".to_string())
@@ -310,30 +375,34 @@ mod primer_contrato {
             }
         }
 
+        
+        /// Funcion que permite modificar el rol de un usuario. Llamada por sistema.
+        /// Revisa que el rol a cambiar sea valido
+        /// Si habia datos previos (en caso de haber cambiado de rol anteriormente) los usa, sino inicializa los campos
         fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
             if nuevo_rol == self.rol {
                 Err("El usuario ya posee ese rol.".to_string())
             }
             else {
-                self.rol = nuevo_rol.clone(); // cargo el nuevo rol
+                self.rol = nuevo_rol.clone();
                 match nuevo_rol{
-                    Rol::Comp => { //si el nuevo rol es comprador
-                        if self.datos_comprador.is_none(){ //y no tiene ningun dato anterior de comprador
+                    Rol::Comp => {
+                        if self.datos_comprador.is_none(){
                             let ordenes_de_compra = Vec::new();
                             let reputacion_como_comprador = Vec::new();
-                            self.datos_comprador = Some(Comprador{ //inicializa todos los datos del comprador
+                            self.datos_comprador = Some(Comprador{
                                 ordenes_de_compra,
                                 reputacion_como_comprador,
                             });
                         }
                     }
 
-                    Rol::Vend => { //si el nuevo rol es vendedor
-                        if self.datos_vendedor.is_none(){ //y no tiene ningun dato anterior de vendedor
+                    Rol::Vend => {
+                        if self.datos_vendedor.is_none(){ 
                             let productos = Vec::new();
                             let publicaciones = Vec::new();
                             let reputacion_como_vendedor = Vec::new();
-                            self.datos_vendedor = Some(Vendedor{ //inicializa todos los datos del vendedor
+                            self.datos_vendedor = Some(Vendedor{
                                 productos,
                                 publicaciones,
                                 reputacion_como_vendedor,
@@ -341,7 +410,7 @@ mod primer_contrato {
                         }
                     }
 
-                    Rol::Ambos => { //lo mismo para ambos
+                    Rol::Ambos => {
                         if self.datos_comprador.is_none(){
                             let ordenes_de_compra = Vec::new();
                             let reputacion_como_comprador = Vec::new();
@@ -366,18 +435,25 @@ mod primer_contrato {
             }
         }
         
-        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion, id_comprador: AccountId) -> Result<OrdenCompra, String>{
+        
+        /// Funcion para crear una orden de compra. Llamada por sistema.
+        /// Revisa que el usuario tenga el rol de Comp o Ambos.
+        /// Llama a la funcion de Comprador
+        fn crear_orden_de_compra(&mut self, id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> Result<OrdenCompra, String>{
             if self.rol == Rol::Vend{
                 Err("El usuario no esta autorizado para realizar una compra. ERROR: No posee el rol comprador.".to_string())
             }
             else if let Some(ref mut datos_comprador) = self.datos_comprador{
-                Ok(datos_comprador.crear_orden_de_compra(id_publicacion, publicacion, id_comprador))
+                Ok(datos_comprador.crear_orden_de_compra(id_orden, publicacion, id_comprador))
             }
             else{
                 Err("No hay datos de comprador.".to_string())
             }
         }
 
+        /// Funcion para enviar una compra. Llamada por sistema.
+        /// Revisa que el usuario tenga el rol Vend o Ambos.
+        /// Llama a la funcion de Vendedor.
         fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
             if self.rol == Rol::Comp{
                 Err("El usuario no posee el rol de vendedor.".to_string())
@@ -390,6 +466,9 @@ mod primer_contrato {
             }
         }
 
+        /// Funcion para recibir una compra. Llamada por sistema.
+        /// Revisa que el usuario tenga el rol Comp o Ambos.
+        /// Llama a la funcion de Comprador.
         fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
             if self.rol == Rol::Vend{
                 Err("El usuario no posee el rol de comprador.".to_string())
@@ -409,17 +488,26 @@ mod primer_contrato {
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct donde se encuentran los datos de aquel usuario con rol Comprador. 
+    /// ordenes_de_compra, es un Vec que almacena los IDs de cada orden realizada por el comprador. 
+    /// reputacion_como_comprador, es un Vec que almacena las califaciones recibidas por vendedores. 
     struct Comprador{
-        ordenes_de_compra: Vec<u32>, // IDs de las ordenes de compra
+        ordenes_de_compra: Vec<u32>,
         reputacion_como_comprador: Vec<u8>, 
     }
     impl Comprador{
-
-        fn crear_orden_de_compra(&mut self, id_publicacion: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
-            self.ordenes_de_compra.push(id_publicacion);
-            OrdenCompra::crear_orden_de_compra(id_publicacion, publicacion, id_comprador)
+        /// Esta fn crear orden compra es llamada por usuario y recibe estos datos:
+        ///     Id de la orden, informarcion de la publicacion, y ademas el id del comprador 
+        /// Se guarda el id de la orden
+        /// Genera la orden de comrpra y la devuelve al sistema 
+        fn crear_orden_de_compra(&mut self, id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
+            self.ordenes_de_compra.push(id_orden);
+            OrdenCompra::crear_orden_de_compra(id_orden, publicacion, id_comprador)
         }
 
+        /// esta fn recibir_compra es llamada por usuario y recibe estos datos:=
+        /// compra indica si el id de la orden esta en el vector de ordenes de compra perteneciente al comprador 
+        /// en caso de no estar  genera el error
         fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
             if self.ordenes_de_compra.contains(&id_orden){
                 Ok(())
@@ -436,18 +524,31 @@ mod primer_contrato {
 
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct que contiene la información del usuario con rol vendedor. 
+    /// productos, es un Vec con las ids de los productos de su propiedad. 
+    /// reputacion_como_vendedor, es un Vec que almacena las califaciones recibidas por compradores. 
     struct Vendedor{
-        productos: Vec<u32>, //IDs de los productos
-        publicaciones: Vec<u32>, //IDs de las publicaciones
-        reputacion_como_vendedor: Vec<u8>,
+        productos: Vec<u32>,
+        publicaciones: Vec<u32>,
+        reputacion_como_vendedor: Vec<u8>, 
     }
     impl Vendedor{
+
+        // Esta fn crear_publicacion es llamada por usuario recibe como datos  los productos que va a tener la publicacion (productos a publicar)
+        // el precio final / coste de todos los productos juntos 
+        // el id que tendra la publicacion
+        // genera la publicacion 
+        // el vendedor se guarda el  id_publicacion que se genero y se devuelve la publicacion generada para que se guarde en el sistema  
         fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion { 
             let publicacion = Publicacion::crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor);
             self.publicaciones.push(id_publicacion);
             publicacion
         }
 
+
+        // Esta fn enviar_compra es llamada por usuario recibe como dato  el id de la publicacion 
+        // si el id se encuentra en  las publicaciones del vendenderor devuelve ok // exito 
+        // en caso contrario  la pubiclacion no seria  de ese vendedor 
         fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
             if self.publicaciones.contains(&id_publicacion){
                 Ok(())
@@ -463,9 +564,13 @@ mod primer_contrato {
 
 /////////////////////////// ROL ///////////////////////////
 
-    #[derive(Debug, Clone, PartialEq)]    // agrege clone  para comprobar los test 
+    #[derive(Debug, Clone, PartialEq)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]                            
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Enum utulizado para definir el rol de un usuario. 
+    /// Ambos (comprador y vendedor).
+    /// Comp (comprador).
+    /// Vend (vendedor).
     pub enum Rol {
         Ambos,
         Comp, 
@@ -480,12 +585,20 @@ mod primer_contrato {
     #[derive(Clone, Debug)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct que contiene la información de una publicacion. 
+    /// id, guarda la id de la publicación. 
+    /// productos, es un Vec que contiene tuplas cuyos campos son, el id de cada producto publicado y la cantidad de unidades publicadas de ese mismo producto. (id producto, cantidad del producto)
+    /// precio_final, es la suma de, el precio de cada producto multiplicado por la cantidad de unidades del mismo. 
+    /// id_vendedor, es el id del vendedor que realizó la publicación. 
     pub struct Publicacion{
         id: u32,
-        productos: Vec<(u32, u32)>, // (IDs de los productos, cantidades de ese producto)
+        productos: Vec<(u32, u32)>,
         precio_final: u32,
         id_vendedor:AccountId
     }
+
+    /// Funcion para crear y devolver una publicacion. Llamada por Vendedor.
+    /// Crea la publicacion con los datos pasados por parametro.
     impl Publicacion {
         fn crear_publicacion(productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion{
             Publicacion{
@@ -503,6 +616,12 @@ mod primer_contrato {
     #[derive(Clone)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct que contiene la información de un producto.
+    /// id, almacena el id del producto. Utilizado como clave en el "historial_productos" del sistema. 
+    /// nombre, almacena el nombre del producto.
+    /// descripcion, almacena la descripción de un producto.
+    /// precio, almacena el precio del producto.
+    /// categoria, almacena la categoria. La categoria al ser un String, se sanitiza previo a ser cargada. 
     pub struct Producto{
         id: u32,
         nombre: String,
@@ -511,6 +630,9 @@ mod primer_contrato {
         categoria:String,
     }
     impl Producto{
+        /// Funcion para crear y devolver un producto. Llamada por Sistema.
+        /// Crea un producto con los datos pasados por parametro.
+        /// Para el campo de categoria, sanitiza el String, dejando todo en minuscula y sin espacios (para evitar conflictos)
         fn cargar_producto(id: u32, nombre: String, descripcion: String, precio: u32, categoria: String) -> Producto{
             let categoria_limpia = categoria.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
             Producto{
@@ -528,18 +650,27 @@ mod primer_contrato {
     #[derive(Clone, Debug)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Struct que contiene la información de una orden de compra.
+    /// id, almacena la id de la orden de compra. 
+    /// estado, almacena el estado de la compra. Éste puede ser: Pendiente, Enviado, Recibido, Cancelada. 
+    /// cancelacion, es una tupla que almacena el pedido de cancelación, tanto del vendedor como del comprador. (vendedor, comprador)
+    /// info_publicacion, tupla que almacena los datos de la publicación. (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor).
+    /// id_comprador, almacena el id del comprador de la orden de compra. 
+    /// calificaciones, es una tupla que indica si el vendor y/o comprador realizó la calificación a su contraparte. (vendedor, comprador)
     struct OrdenCompra{
         id: u32,
         estado: EstadoCompra,
-        cancelacion: (bool, bool),  //(vendedor, comprador) //Para estado cancelada
-        info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId), // (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor)
+        cancelacion: (bool, bool), 
+        info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId),
         id_comprador:AccountId,
-        calificaciones: (bool, bool), //(Calificacion Vendedor, Calificacion Comprador)
+        calificaciones: (bool, bool),
     }
     impl OrdenCompra{
         
+        /// Funcion para crear y devolver una orden de compra. Llamada por Comprador.
+        /// Crea una orden con los datos pasados por parametros, tanto "cancelacion" como "calificaciones" se inicializan con los dos campos en false.
         fn crear_orden_de_compra(id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
-            let id_publicacion = publicacion.id; //Para mejor legibilidad
+            let id_publicacion = publicacion.id;
             let productos = publicacion.productos;
             let precio_final = publicacion.precio_final;
             let id_vendedor = publicacion.id_vendedor;
@@ -564,6 +695,11 @@ mod primer_contrato {
     #[derive(Clone, PartialEq, Debug)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+    /// Enum utilizado para indicar el estado de la orden de compra. 
+    /// Pendiente (cuando la orden se crea).
+    /// Enviado (cuando el vendedor envía los productos de la publicación).
+    /// Recibido (cuando el comprador recibe los productos de la orden). 
+    /// Cancelada (solo se asignará cuando ambas partes de la orden de compra cancelan la misma). 
     enum EstadoCompra{
         Pendiente,
         Enviado,
@@ -672,10 +808,6 @@ mod primer_contrato {
             assert!(resultado.is_err(), "El sistema debería rechazar registros duplicados");
             assert_eq!(resultado.unwrap_err(), "El usuario ya esta registrado.");
         }
-
-        // ===========================
-        // TESTS: cargar_producto
-        // ===========================
 
         #[ink::test]
         fn test_cargar_producto_con_usuario_vendedor() {
