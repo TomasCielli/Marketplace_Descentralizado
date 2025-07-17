@@ -90,11 +90,11 @@ mod primer_contrato {
         }
         fn priv_crear_publicacion(&mut self, account_id: AccountId, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
             if let Some(mut usuario) = self.usuarios.get(account_id){
-                self.hay_stock_suficiente(productos_a_publicar.clone())?; //REVISA STOCK SUFICIENTE
+                self.hay_stock_suficiente(productos_a_publicar.clone())?;
                 let id_publicacion = self.historial_publicaciones.len();
                 let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
                 let publicacion = usuario.crear_publicacion(productos_a_publicar.clone(), precio_final, id_publicacion, account_id)?;
-                self.descontar_stock(productos_a_publicar)?; // DESCUENTA STOCK
+                self.descontar_stock(productos_a_publicar)?;
                 self.historial_publicaciones.push(&(id_publicacion, publicacion));
                 self.usuarios.insert(account_id, &usuario);
                 Ok(())
@@ -160,8 +160,8 @@ mod primer_contrato {
         fn priv_crear_orden_de_compra(&mut self, account_id: AccountId, id_publicacion: u32) -> Result<(), String>{
             if let Some(mut usuario) = self.usuarios.get(account_id){
                 let publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
-                if (usuario.rol == Rol::Vend) | (account_id == publicacion.id_vendedor){
-                    return Err("El usuario no puede realizar la compra.".to_string())
+                if account_id == publicacion.id_vendedor{
+                    return Err("El usuario no puede comprar sus propias publicaciones.".to_string())
                 }
                 let id_orden = self.historial_ordenes_de_compra.len();
                 let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?;
@@ -252,9 +252,6 @@ mod primer_contrato {
                     .ok_or("Overflow al multiplicar precio por cantidad.")?)
                     .ok_or("Overflow al acumular el total.")?;
                 }
-                else {
-                    return Err("Uno de los productos a calcular no se encuentra cargado.".to_string())
-                }
             }
             Ok(total)
         }
@@ -288,9 +285,6 @@ mod primer_contrato {
                 if let Some ((producto, mut stock)) = self.historial_productos.get(id){
                     stock = stock.checked_sub(cantidad).ok_or("Error al restar stock")?;
                     self.historial_productos.insert(id, &(producto, stock));
-                }
-                else {
-                    return Err("No se encontro el producto.".to_string())
                 }
             }
             Ok(())
@@ -367,12 +361,9 @@ mod primer_contrato {
             if self.rol == Rol::Comp {
                 Err("El usuario no es vendedor.".to_string())
             }
-            else if let Some(ref mut datos_vendedor) = self.datos_vendedor {
-                Ok(datos_vendedor.crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor))
-            } 
             else {
-                Err("El vendedor no tiene datos.".to_string())
-            }
+                Ok(self.datos_vendedor.as_mut().expect("Error con los datos del vendedor.").crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor))
+            } 
         }
 
         
@@ -443,11 +434,8 @@ mod primer_contrato {
             if self.rol == Rol::Vend{
                 Err("El usuario no esta autorizado para realizar una compra. ERROR: No posee el rol comprador.".to_string())
             }
-            else if let Some(ref mut datos_comprador) = self.datos_comprador{
-                Ok(datos_comprador.crear_orden_de_compra(id_orden, publicacion, id_comprador))
-            }
             else{
-                Err("No hay datos de comprador.".to_string())
+                Ok(self.datos_comprador.as_mut().expect("No hay datos del comprador.").crear_orden_de_compra(id_orden, publicacion, id_comprador))
             }
         }
 
@@ -458,11 +446,8 @@ mod primer_contrato {
             if self.rol == Rol::Comp{
                 Err("El usuario no posee el rol de vendedor.".to_string())
             }
-            else if let Some(ref datos_vendedor) = self.datos_vendedor{
-                datos_vendedor.enviar_compra(id_publicacion)
-            }
-            else {
-                Err("El vendedor no tiene datos.".to_string())
+            else{
+                self.datos_vendedor.as_ref().expect("No hay datos del vendedor.").enviar_compra(id_publicacion)
             }
         }
 
@@ -473,11 +458,8 @@ mod primer_contrato {
             if self.rol == Rol::Vend{
                 Err("El usuario no posee el rol de comprador.".to_string())
             }
-            else if let Some(ref datos_comprador) = self.datos_comprador{
-                datos_comprador.recibir_compra(id_orden)
-            }
-            else {
-                Err("No hay datos del comprador.".to_string())
+            else{
+                self.datos_comprador.as_ref().expect("No hay datos del comprador.").recibir_compra(id_orden)
             }
         }
     }
@@ -1030,22 +1012,23 @@ mod primer_contrato {
             // Usuario válido
             test::set_caller::<ink::env::DefaultEnvironment>(accounts.frank);
             contrato.agregar_usuario_sistema(
-                "Frank".to_string(),
-                "Apellido".to_string(),
-                "Dirección".to_string(),
-                "frank@mail.com".to_string(),
+                "Frank".into(),
+                "Apellido".into(),
+                "Dirección".into(),
+                "frank@mail.com".into(),
                 Rol::Vend,
             ).unwrap();
 
-            // Intenta publicar producto inexistente
-            let resultado = contrato.crear_publicacion(vec![(42, 1)]); // producto ID 42 no existe
-            assert!(resultado.is_err(), "Debería fallar por producto no existente");
-            assert_eq!(
-                resultado.unwrap_err(),
-                "Uno de los productos a calcular no se encuentra cargado."
-            );
-        }
+            // Asegurarse que el producto 42 no existe
+            assert!(contrato.historial_productos.get(42).is_none());
 
+            // Intenta publicar un producto inexistente
+            let resultado = contrato.crear_publicacion(vec![(42, 1)]);
+            assert!(resultado.is_err(), "Debería fallar por producto inexistente");
+
+            let err = resultado.unwrap_err();
+            assert_eq!(err, "No se encontro el producto.");
+        }
         #[ink::test]
         fn test_visualizar_publicacion_existente() {
             let accounts = default_accounts();
@@ -1236,7 +1219,8 @@ mod primer_contrato {
             let result = contrato.crear_orden_de_compra(0);
 
             assert!(result.is_err(), "Un vendedor no puede comprar");
-            assert_eq!(result.unwrap_err(), "El usuario no esta autorizado para realizar una compra. ERROR: No posee el rol comprador.");
+            let mensaje = result.unwrap_err();
+            assert_eq!(mensaje, "El usuario no puede comprar sus propias publicaciones.");
         }
 
         #[ink::test]
@@ -1265,17 +1249,13 @@ mod primer_contrato {
 
             // Vendedor
             test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
-            contrato.agregar_usuario_sistema("V".into(), "A".into(), "Dir".into(), "v@mail.com".into(), Rol::Vend).unwrap();
+            contrato.agregar_usuario_sistema("Vendedor".into(), "A".into(), "Dir".into(), "v@mail.com".into(), Rol::Vend).unwrap();
             contrato.cargar_producto("P5".into(), "Desc".into(), 100, "cat".into(), 1).unwrap();
-            contrato.crear_publicacion(vec![(1, 2)]).unwrap(); // Stock insuficiente
 
-            // Comprador
-            test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-            contrato.agregar_usuario_sistema("C".into(), "B".into(), "Dir".into(), "c@mail.com".into(), Rol::Comp).unwrap();
-
-            let result = contrato.crear_orden_de_compra(0);
-            assert!(result.is_err());
-            assert_eq!(result.unwrap_err(), "No hay stock suficiente.");
+            // Intentar crear publicación con más cantidad que stock disponible
+            let resultado_pub = contrato.crear_publicacion(vec![(1, 2)]);
+            assert!(resultado_pub.is_err(), "No debería poder crear publicación con cantidad mayor al stock");
+            assert_eq!(resultado_pub.unwrap_err(), "No hay stock suficiente.");
         }
 
         #[ink::test]
@@ -1478,6 +1458,56 @@ mod primer_contrato {
             let result = contrato.recibir_compra(0);
             assert!(result.is_err());
             assert_eq!(result.unwrap_err(), "No existe el usuario.");
+        }
+
+        #[ink::test]
+        fn test_modificar_rol_a_comprador_agrega_datos_comprador_si_no_existen() {
+            let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            let mut contrato = PrimerContrato::default();
+
+            // Registrar usuario como vendedor
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            contrato.agregar_usuario_sistema(
+                "Alice".to_string(),
+                "Apellido".to_string(),
+                "Direccion".to_string(),
+                "alice@mail.com".to_string(),
+                Rol::Vend,
+            ).unwrap();
+
+            // Modificar rol a Comp
+            let result = contrato.modificar_rol(Rol::Comp);
+            assert!(result.is_ok(), "El cambio de rol a Comp debería funcionar");
+
+            let usuario = contrato.usuarios.get(accounts.alice).unwrap();
+            assert_eq!(usuario.rol, Rol::Comp);
+            assert!(usuario.datos_comprador.is_some(), "Debe tener datos_comprador");
+            assert!(usuario.datos_vendedor.is_some(), "Debe conservar datos_vendedor previos");
+        }
+
+        #[ink::test]
+        fn test_modificar_rol_a_vendedor_agrega_datos_vendedor_si_no_existen() {
+            let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            let mut contrato = PrimerContrato::default();
+
+            // Registrar usuario como comprador
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            contrato.agregar_usuario_sistema(
+                "Bob".to_string(),
+                "Apellido".to_string(),
+                "Direccion".to_string(),
+                "bob@mail.com".to_string(),
+                Rol::Comp,
+            ).unwrap();
+
+            // Modificar rol a Vend
+            let result = contrato.modificar_rol(Rol::Vend);
+            assert!(result.is_ok(), "El cambio de rol a Vend debería funcionar");
+
+            let usuario = contrato.usuarios.get(accounts.bob).unwrap();
+            assert_eq!(usuario.rol, Rol::Vend);
+            assert!(usuario.datos_vendedor.is_some(), "Debe tener datos_vendedor");
+            assert!(usuario.datos_comprador.is_some(), "Debe conservar datos_comprador previos");
         }
     }
 }
