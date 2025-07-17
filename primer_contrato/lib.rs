@@ -90,6 +90,11 @@ mod primer_contrato {
         }
         fn priv_crear_publicacion(&mut self, account_id: AccountId, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
             if let Some(mut usuario) = self.usuarios.get(account_id){
+                for (_id, cantidad) in productos_a_publicar.clone(){
+                    if cantidad == 0 {
+                        return Err("Un producto tiene cantidades no validas.".to_string())
+                    }
+                }
                 self.hay_stock_suficiente(productos_a_publicar.clone())?;
                 let id_publicacion = self.historial_publicaciones.len();
                 let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
@@ -269,7 +274,7 @@ mod primer_contrato {
         fn hay_stock_suficiente(&self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
             for (id, cantidad) in productos_cantidades{
                 if let Some((_producto, stock)) = self.historial_productos.get(id){
-                    if stock < cantidad{
+                    if (stock < cantidad) | (stock == 0){
                         return Err("No hay stock suficiente.".to_string())
                     }
                 }
