@@ -160,8 +160,12 @@ mod primer_contrato {
         fn priv_crear_orden_de_compra(&mut self, account_id: AccountId, id_publicacion: u32) -> Result<(), String>{
             if let Some(mut usuario) = self.usuarios.get(account_id){
                 let publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
-                if account_id == publicacion.id_vendedor{
+                let vendedor_de_la_orden = self.usuarios.get(publicacion.id_vendedor).unwrap();
+                if account_id == vendedor_de_la_orden.id_usuario{
                     return Err("El usuario no puede comprar sus propias publicaciones.".to_string())
+                }
+                if vendedor_de_la_orden.rol == Rol::Comp {
+                    return Err("La publicacion ya no se encuentra disponible.".to_string())
                 }
                 let id_orden = self.historial_ordenes_de_compra.len();
                 let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?;
