@@ -1,6 +1,7 @@
 
 <img align="center" src="https://media.tenor.com/3d8r8wIlXGEAAAAj/duck-pato.gif"/> 
 </p>
+
 # Trabajo Práctico Final – Marketplace Descentralizado tipo MercadoLibre
 
 **Materia:** Seminario de Lenguajes – Opción Rust  
