@@ -1,4 +1,4 @@
-
+<p align="center">
 <img align="center" src="https://media.tenor.com/3d8r8wIlXGEAAAAj/duck-pato.gif"/> 
 </p>
 
@@ -110,5 +110,6 @@ Incluye:
 ### Bonus (hasta +20%):
 - Sistema de disputas.
 - Simulación de pagos.
+
 
 
