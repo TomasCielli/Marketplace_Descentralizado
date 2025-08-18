@@ -376,7 +376,7 @@ mod primer_contrato {
             productos
         }
 
-        //CORRECCIONES 14/8
+        //CORRECCIONES 14/08
         fn puede_restockear(&self, publicacion: Publicacion) -> bool{
             for (id, cantidad) in publicacion.productos{
                 let stock = self.historial_productos.get(id).unwrap().1;
@@ -397,6 +397,115 @@ mod primer_contrato {
             }
             return Err("No se encontro publicacion".to_string());
         }
+
+        //FUNCIONES ENTREGA FINAL
+
+        //18/08
+        #[ink(message)]
+        pub fn cancelar_comprar(&mut self, id_orden: u32) -> Result<(), String>{
+            let account_id = self.env().caller();
+            self.priv_cancelar_compra(account_id, id_orden)
+        }
+        fn priv_cancelar_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{
+            if let Some(usuario) = self.usuarios.get(account_id){
+                let mut datos_de_la_orden = self.buscar_orden(id_orden)?;
+                self.se_puede_cancelar(datos_de_la_orden.estado.clone())?;
+                let id_vendedor = datos_de_la_orden.info_publicacion.3;
+                let id_comprador = datos_de_la_orden.id_comprador;
+                let id_publicacion = datos_de_la_orden.info_publicacion.0; 
+                let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
+                if rol == Rol::Comp{
+                    datos_de_la_orden.cancelar_compra_comprador()?;
+                }
+                else {
+                    datos_de_la_orden.cancelar_compra_vendedor()?;
+                    self.devolver_productos(id_publicacion)?;
+                }
+                self.actualizar_ordenes(datos_de_la_orden, id_orden)?;
+                return Ok(());
+            }
+            else {
+                return Err("El usuario no se encuentra cargado en el sistema.".to_string())
+            }
+        }
+
+        fn se_puede_cancelar(&self, estado_de_la_orden: EstadoCompra)-> Result<(), String>{
+            if estado_de_la_orden != EstadoCompra::Pendiente{
+                return Err("Ya no se puede cancelar la compra.".to_string())
+            }
+            else {
+                return Ok(())
+            }
+        }
+        fn devolver_productos(&mut self, id_publicacion: u32,) -> Result<(), String>{
+            let mut publicacion = self.buscar_publicacion(id_publicacion)?;
+            if publicacion.disponible {
+                return self.aumentar_stock_productos(publicacion.productos);
+            }
+            else {
+                publicacion.disponible = true;
+                return self.actualizar_publicaciones(publicacion, id_publicacion);
+            }
+        }
+
+        fn aumentar_stock_productos(&mut self, productos_cantidades: Vec<(u32, u32)>) -> Result<(), String>{
+            for (id, cantidad) in productos_cantidades{
+                if let Some ((producto, mut stock)) = self.historial_productos.get(id){
+                    stock = stock.checked_add(cantidad).ok_or("Error al sumar stock")?;
+                    self.historial_productos.insert(id, &(producto, stock)); //sobreescribe el vector
+                }
+                else {
+                    return Err("No se encontro el producto.".to_string())
+                }
+            }
+            Ok(())
+        }
+
+        fn actualizar_publicaciones(&mut self, publicacion: Publicacion, id_publicacion: u32) -> Result<(), String>{
+            let pos = self.devolver_posicion_publicacion(id_publicacion)?;
+            self.historial_publicaciones.set(pos, &(id_publicacion, publicacion));
+            return Ok(());
+        }
+
+        fn actualizar_ordenes(&mut self, orden: OrdenCompra, id_orden: u32) -> Result<(), String>{
+            let pos = self.devolver_posicion_orden_de_compra(id_orden)?;
+            self.historial_ordenes_de_compra.set(pos, &(id_orden, orden));
+            return Ok(());
+        }
+
+        fn buscar_orden(&self, id_orden: u32) -> Result<OrdenCompra, String>{
+            for i in 0..self.historial_ordenes_de_compra.len(){
+                if let Some((id, ref orden)) = self.historial_ordenes_de_compra.get(i){
+                    if id == id_orden{
+                        return Ok(orden.clone());
+                    }
+                }
+            }
+            return Err("No se encontro la orden.".to_string());
+        }
+
+        fn buscar_publicacion(&self, id_publicacion: u32) -> Result<Publicacion, String>{
+            for i in 0..self.historial_publicaciones.len(){
+                if let Some((id, ref publicacion)) = self.historial_publicaciones.get(i){
+                    if id == id_publicacion{
+                        return Ok(publicacion.clone());
+                    }
+                }
+            }
+            return Err("No se encontro la publicacion.".to_string());
+        }
+
+        fn devolver_posicion_orden_de_compra(&self, id_orden: u32) -> Result<u32, String>{
+            for i in 0..self.historial_ordenes_de_compra.len() {
+                if let Some((id, orden)) = self.historial_ordenes_de_compra.get(i) {
+                    if id == id_orden { 
+                        return Ok(i);
+                    }
+                }
+            }
+            return Err("No se encontro la orden de compra.".to_string());
+        }
+
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -619,6 +728,62 @@ mod primer_contrato {
                 self.datos_comprador.as_ref().expect("No hay datos del comprador.").recibir_compra(id_orden)
             }
         }
+
+        //FUNCIONES ENTREGA FINAL
+        
+        //18/08
+
+        fn comprobar_rol(&self, id_vendedor: AccountId, id_comprador: AccountId) -> Result<Rol, String>{
+            match self.rol{
+                Rol::Vend => {
+                    if let Some(ref _datos_vendedor) = self.datos_vendedor{
+                        if self.es_el_vendedor(id_vendedor){
+                            Ok(Rol::Vend)
+                        }
+                        else {
+                            Err("El vendedor no posee esta publicacion.".to_string())
+                        }
+                    }
+                    else {
+                        Err("El vendedor no tiene datos cargados.".to_string())
+                    }
+                },
+
+                Rol::Comp => {
+                    if let Some(ref _datos_comprador) = self.datos_comprador{
+                        if self.es_el_comprador(id_comprador){
+                            Ok(Rol::Comp)
+                        }
+                        else{
+                            Err("El usuario no posee esa orden de compra.".to_string())
+                        }
+                    }
+                    else {
+                        Err("El comprador no tiene datos cargados.".to_string())
+                    }
+                },
+
+                Rol::Ambos => {
+                    if self.es_el_vendedor(id_vendedor) {
+                        Ok(Rol::Vend)
+                    }
+                    else if self.es_el_comprador(id_comprador) {
+                        Ok(Rol::Comp)
+                    }
+                    else {
+                       Err("El usuario no participa de la compra.".to_string())
+                    }
+                },
+            }
+        }
+
+        fn es_el_vendedor(&self, id_vendedor: AccountId) -> bool{
+            id_vendedor == self.id_usuario
+        }
+
+        fn es_el_comprador(&self, id_comprador: AccountId) -> bool{
+            id_comprador == self.id_usuario
+        }
     }
 
 
@@ -828,6 +993,35 @@ mod primer_contrato {
                 info_publicacion,
                 id_comprador, 
                 calificaciones,
+            }
+        }
+
+        //FUNCIONES ENTREGA FINAL
+
+        //18/08
+        
+        fn cancelar_compra_comprador(&mut self) -> Result<(), String>{
+            if self.cancelacion.1 {
+                return Err("La compra ya fue cancelada por el comprador anteriormente.".to_string());
+            }
+            else{
+                self.cancelacion.1 = true;
+                return Ok(());
+            }
+        }
+        
+        fn cancelar_compra_vendedor(&mut self) -> Result<(), String>{
+            if self.cancelacion.0 {
+                return Err("La compra ya fue cancelada.".to_string());
+            }
+            else {
+                if self.cancelacion.1 {
+                    self.cancelacion.0 = true;
+                    return Ok(());
+                }
+                else {
+                    return Err("El comprador no desea cancelar la compra.".to_string());
+                }
             }
         }
     }
