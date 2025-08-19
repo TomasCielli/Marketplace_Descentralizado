@@ -9,3 +9,5 @@
 Cargo.lock
 
 **/src
+
+**/tarpaulin-report.toml
