@@ -1,32 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #![allow(non_local_definitions)]
 
-//Correcciones
-
-//[3] Se pueden ver las publicaciones de cualquier usuario. Pero no los Productos propios. ✅ 12/08
-
-//[12] No es muy user-friendly la forma de publicar… crearPublicacion(..) recibe como parámetro un Vec<(u32,u32)> 
-// pero no informa qué representa cada uno de esos números u32. <------- ❌ PREGUNTAR
-
-// Un Comprador no puede crear una Publicación de cierto Producto particular, pero cualquier Vendedor o C-V puede, ✅ 12/08
-// incluso aquellos vendedores que NO cargaron  ese Producto. Parece que el Vendedor no es dueño de un Producto sino de un Producto Publicado, 
-// nada evita que cualquier Vendedor se apropie y publique cualquier Producto que ya haya sido cargado al sistema. 
-
-// También puedo cargar un producto con stock 0 y precio 0, pero no puedo crear publicación con este producto por ✅ 12/08
-// falta de stock.
-
-//[13] Figura en la lista de Publicaciones, no hay listado de Productos. Y son las publicaciones en general, no propias del Vendedor. 
-// Cualquier Comprador puede visualizar esta lista también.  ✅ 12/08
-
-
-//[15] No cambia nada al visualizar las publicacioens. Stock sigue siendo “1” a pesar de haber hecho 3 órdenes de compra. ✅ 14/08
-
-
-//[19] Puedo crear la orden de compra de la Publicación ID 0 (con una cuenta Compradora distinta a la de recién), que ya fue ordenada, enviada y recibida tres veces a pesar de tener stock 1. En este punto ya debería tener stock -2, 
-//pero aún así logré hacer la nueva orden de compra. ✅ 14/08
-
-
-
 #[ink::contract]
 mod primer_contrato {
     use ink::storage::Mapping;
@@ -94,20 +68,16 @@ mod primer_contrato {
             if stock == 0{
                 return Err("Stock no valido".to_string())
             } //<---- Hasta. 
-            if let Some(mut usuario) = self.usuarios.get(account_id){
-                if (usuario.rol == Rol::Vend) | (usuario.rol == Rol::Ambos){
-                    self.dimension_logica_productos = self.dimension_logica_productos.checked_add(1).ok_or("Error al sumar.")?;
-                    self.historial_productos.insert(self.dimension_logica_productos, &(Producto::cargar_producto(self.dimension_logica_productos, nombre, descripcion, precio, categoria), stock));
-                    usuario.cargar_producto(self.dimension_logica_productos)?;
-                    self.usuarios.insert(account_id, &usuario);
-                    Ok(())
-                }
-                else {
-                    Err("El usuario no tiene permisos para cargar productos. No es vendedor.".to_string())
-                }
+            let mut usuario = self.buscar_usuario(account_id)?;
+            if (usuario.rol == Rol::Vend) | (usuario.rol == Rol::Ambos){
+                self.dimension_logica_productos = self.dimension_logica_productos.checked_add(1).ok_or("Error al sumar.")?;
+                self.historial_productos.insert(self.dimension_logica_productos, &(Producto::cargar_producto(self.dimension_logica_productos, nombre, descripcion, precio, categoria), stock));
+                usuario.cargar_producto(self.dimension_logica_productos)?;
+                self.usuarios.insert(account_id, &usuario);
+                Ok(())
             }
             else {
-                Err("No existe el usuario.".to_string())
+                Err("El usuario no tiene permisos para cargar productos. No es vendedor.".to_string())
             }
         }
 
@@ -123,26 +93,21 @@ mod primer_contrato {
             self.priv_crear_publicacion(account_id, productos_a_publicar)
         }
         fn priv_crear_publicacion(&mut self, account_id: AccountId, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
-            if let Some(mut usuario) = self.usuarios.get(account_id){
-                for (id, cantidad) in productos_a_publicar.clone(){
-                    if cantidad == 0 {
-                        return Err("Un producto tiene cantidades no validas.".to_string())
-                    }
-                    usuario.verificar_propiedad_producto(id)? // <------ Correccion Punto 12. 12/08
+            let mut usuario = self.buscar_usuario(account_id)?;
+            for (id, cantidad) in productos_a_publicar.clone(){
+                if cantidad == 0 {
+                    return Err("Un producto tiene cantidades no validas.".to_string())
                 }
-                self.hay_stock_suficiente(productos_a_publicar.clone())?;
-                let id_publicacion = self.historial_publicaciones.len();
-                let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
-                let publicacion = usuario.crear_publicacion(productos_a_publicar.clone(), precio_final, id_publicacion, account_id)?;
-                self.descontar_stock(productos_a_publicar)?;
-                self.historial_publicaciones.push(&(id_publicacion, publicacion));
-                self.usuarios.insert(account_id, &usuario);
-                Ok(())
+                usuario.verificar_propiedad_producto(id)? // <------ Correccion Punto 12. 12/08
             }
-            else {
-                Err("No existe el usuario.".to_string())
-            }
-
+            self.hay_stock_suficiente(productos_a_publicar.clone())?;
+            let id_publicacion = self.historial_publicaciones.len();
+            let precio_final = self.calcular_precio_final(productos_a_publicar.clone())?;
+            let publicacion = usuario.crear_publicacion(productos_a_publicar.clone(), precio_final, id_publicacion, account_id)?;
+            self.descontar_stock(productos_a_publicar)?;
+            self.historial_publicaciones.push(&(id_publicacion, publicacion));
+            self.usuarios.insert(account_id, &usuario);
+            Ok(())
         }
         
         
@@ -174,14 +139,10 @@ mod primer_contrato {
             self.priv_modificar_rol(account_id, nuevo_rol)
         }
         fn priv_modificar_rol(&mut self, account_id: AccountId, nuevo_rol: Rol) -> Result<(), String>{
-            if let Some(mut usuario) = self.usuarios.get(account_id){
-                usuario.modificar_rol(nuevo_rol)?;
-                self.usuarios.insert(account_id, &usuario);
-                Ok(())
-            }
-            else {
-                Err("No existe el usuario.".to_string())
-            }
+            let mut usuario = self.buscar_usuario(account_id)?;
+            usuario.modificar_rol(nuevo_rol)?;
+            self.usuarios.insert(account_id, &usuario);
+            Ok(())
         }
          
         #[ink(message)]
@@ -198,36 +159,32 @@ mod primer_contrato {
             self.priv_crear_orden_de_compra(account_id, id_publicacion)
         }
         fn priv_crear_orden_de_compra(&mut self, account_id: AccountId, id_publicacion: u32) -> Result<(), String>{
-            if let Some(mut usuario) = self.usuarios.get(account_id){
-                let mut publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
-                if publicacion.disponible{ //Agregado el 14/08
-                    let vendedor_de_la_orden = self.usuarios.get(publicacion.id_vendedor).unwrap();
-                    if account_id == vendedor_de_la_orden.id_usuario{
-                        return Err("El usuario no puede comprar sus propias publicaciones.".to_string())
-                    }
-                    if vendedor_de_la_orden.rol == Rol::Comp {
-                        return Err("La publicacion ya no se encuentra disponible.".to_string())
-                    }
-                    let id_orden = self.historial_ordenes_de_compra.len();
-                    let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?;
-                    self.historial_ordenes_de_compra.push(&(id_orden, orden_de_compra));
-                    self.usuarios.insert(account_id, &usuario);
-                    if self.puede_restockear(publicacion.clone()){ //Agregado el 14/08
-                        self.descontar_stock(publicacion.productos)?;
-                    }
-                    else{
-                        publicacion.disponible = !publicacion.disponible;
-                        let pos = self.devolver_posicion_publicacion(id_publicacion)?;
-                        self.historial_publicaciones.set(pos, &(id_publicacion, publicacion));
-                    }
-                    Ok(())  
+            let mut usuario = self.buscar_usuario(account_id)?;
+            let mut publicacion = self.visualizar_productos_de_publicacion(id_publicacion)?;
+            if publicacion.disponible{ //Agregado el 14/08
+                let vendedor_de_la_orden = self.usuarios.get(publicacion.id_vendedor).unwrap();
+                if account_id == vendedor_de_la_orden.id_usuario{
+                    return Err("El usuario no puede comprar sus propias publicaciones.".to_string())
                 }
-                else{ //Agregado el 14/08
-                    Err("La publicacion ya no tiene stock".to_string())
+                if vendedor_de_la_orden.rol == Rol::Comp {
+                    return Err("La publicacion ya no se encuentra disponible.".to_string())
                 }
+                let id_orden = self.historial_ordenes_de_compra.len();
+                let orden_de_compra = usuario.crear_orden_de_compra(id_orden, publicacion.clone(), account_id)?;
+                self.historial_ordenes_de_compra.push(&(id_orden, orden_de_compra));
+                self.usuarios.insert(account_id, &usuario);
+                if self.puede_restockear(publicacion.clone()){ //Agregado el 14/08
+                    self.descontar_stock(publicacion.productos)?;
+                }
+                else {
+                    publicacion.disponible = !publicacion.disponible;
+                    let pos = self.devolver_posicion_publicacion(id_publicacion)?;
+                    self.historial_publicaciones.set(pos, &(id_publicacion, publicacion));
+                }
+                Ok(())  
             }
-            else {
-                Err("No existe el usuario.".to_string())
+            else { //Agregado el 14/08
+                Err("La publicacion ya no tiene stock".to_string())
             }
         }
         
@@ -242,26 +199,22 @@ mod primer_contrato {
             self.priv_enviar_compra(account_id, id_orden)
         }
         fn priv_enviar_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{
-            if let Some(usuario) = self.usuarios.get(account_id){
-                for i in 0..self.historial_ordenes_de_compra.len() {
-                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id == id_orden {
-                            if orden_de_compra.estado != EstadoCompra::Pendiente{
-                                return Err("El producto no puede ser enviado.".to_string());
-                            }
-                            let id_publicacion = orden_de_compra.info_publicacion.0;
-                            usuario.enviar_compra(id_publicacion)?;
-                            orden_de_compra.estado = EstadoCompra::Enviado;
-                            let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
-                            return Ok(());
+            let mut usuario = self.buscar_usuario(account_id)?;
+            for i in 0..self.historial_ordenes_de_compra.len() {
+                if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                    if id == id_orden {
+                        if orden_de_compra.estado != EstadoCompra::Pendiente{
+                            return Err("El producto no puede ser enviado.".to_string());
                         }
+                        let id_publicacion = orden_de_compra.info_publicacion.0;
+                        usuario.enviar_compra(id_publicacion)?;
+                        orden_de_compra.estado = EstadoCompra::Enviado;
+                        let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
+                        return Ok(());
                     }
                 }
-                Err("No existe la orden buscada.".to_string())
             }
-            else {
-                Err("No existe el usuario.".to_string())
-            }
+            Err("No existe la orden buscada.".to_string())
         }
         
         /// Funcion para recibir una compra.
@@ -276,25 +229,21 @@ mod primer_contrato {
             self.priv_recibir_compra(account_id, id_orden)
         }
         fn priv_recibir_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{ 
-            if let Some(usuario) = self.usuarios.get(account_id){
-                for i in 0..self.historial_ordenes_de_compra.len() {
-                    if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
-                        if id == id_orden {
-                            if orden_de_compra.estado != EstadoCompra::Enviado{
-                                return Err("El producto todavia no fue enviado.".to_string());
-                            }
-                            usuario.recibir_compra(id_orden)?;
-                            orden_de_compra.estado = EstadoCompra::Recibido;
-                            let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
-                            return Ok(())
+            let mut usuario = self.buscar_usuario(account_id)?;
+            for i in 0..self.historial_ordenes_de_compra.len() {
+                if let Some((id, mut orden_de_compra)) = self.historial_ordenes_de_compra.get(i){
+                    if id == id_orden {
+                        if orden_de_compra.estado != EstadoCompra::Enviado{
+                            return Err("El producto todavia no fue enviado.".to_string());
                         }
+                        usuario.recibir_compra(id_orden)?;
+                        orden_de_compra.estado = EstadoCompra::Recibido;
+                        let _ = self.historial_ordenes_de_compra.set(i, &(id, orden_de_compra));
+                        return Ok(())
                     }
                 }
-                Err("No existe la orden buscada.".to_string())
             }
-            else {
-                Err("No existe el usuario.".to_string())
-            }
+            Err("No existe la orden buscada.".to_string())
         }
 
         //  Fn calcular_precio final  va a recibir los productos de la publicacion y va a prodecer a realizar 
@@ -355,15 +304,11 @@ mod primer_contrato {
             self.priv_visualizar_productos_propios(account_id)
         }
         fn priv_visualizar_productos_propios(&self, account_id: AccountId) -> Result<Vec<(u32, u32)>, String>{
-            if let Some(usuario) = self.usuarios.get(account_id){
-                usuario.es_vendedor_ambos()?;
-                let lista_de_productos = usuario.lista_de_productos()?;
-                let mut productos = self.cargar_productos_propios(account_id, lista_de_productos);
-                Ok(productos)
-            }
-            else{
-                return Err("El usuario no existe".to_string())
-            }
+            let mut usuario = self.buscar_usuario(account_id)?;
+            usuario.es_vendedor_ambos()?;
+            let lista_de_productos = usuario.lista_de_productos()?;
+            let mut productos = self.cargar_productos_propios(account_id, lista_de_productos);
+            Ok(productos)
         }
 
         fn cargar_productos_propios(&self, account_id: AccountId, lista_de_productos: Vec<u32>) -> Vec<(u32, u32)>{
@@ -407,26 +352,22 @@ mod primer_contrato {
             self.priv_cancelar_compra(account_id, id_orden)
         }
         fn priv_cancelar_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{
-            if let Some(usuario) = self.usuarios.get(account_id){
-                let mut datos_de_la_orden = self.buscar_orden(id_orden)?;
-                self.se_puede_cancelar(datos_de_la_orden.estado.clone())?;
-                let id_vendedor = datos_de_la_orden.info_publicacion.3;
-                let id_comprador = datos_de_la_orden.id_comprador;
-                let id_publicacion = datos_de_la_orden.info_publicacion.0; 
-                let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
-                if rol == Rol::Comp{
-                    datos_de_la_orden.cancelar_compra_comprador()?;
-                }
-                else {
-                    datos_de_la_orden.cancelar_compra_vendedor()?;
-                    self.devolver_productos(id_publicacion)?;
-                }
-                self.actualizar_ordenes(datos_de_la_orden, id_orden)?;
-                return Ok(());
+            let mut usuario = self.buscar_usuario(account_id)?;
+            let mut datos_de_la_orden = self.buscar_orden(id_orden)?;
+            self.se_puede_cancelar(datos_de_la_orden.estado.clone())?;
+            let id_vendedor = datos_de_la_orden.info_publicacion.3;
+            let id_comprador = datos_de_la_orden.id_comprador;
+            let id_publicacion = datos_de_la_orden.info_publicacion.0; 
+            let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
+            if rol == Rol::Comp{
+                datos_de_la_orden.cancelar_compra_comprador()?;
             }
             else {
-                return Err("El usuario no se encuentra cargado en el sistema.".to_string())
+                datos_de_la_orden.cancelar_compra_vendedor()?;
+                self.devolver_productos(id_publicacion)?;
             }
+            self.actualizar_ordenes(datos_de_la_orden, id_orden)?;
+            return Ok(());
         }
 
         fn se_puede_cancelar(&self, estado_de_la_orden: EstadoCompra)-> Result<(), String>{
@@ -517,16 +458,12 @@ mod primer_contrato {
             if (calificacion < 1) | (calificacion > 5){ //Revisa que la calificacion este en rango
                 return Err("El valor de la calificacion no es valido (1..5).".to_string())
             }
-            if let Some(usuario) = self.usuarios.get(account_id){ //Busca que el usuario exita
-                let mut orden_de_compra = self.buscar_orden(id_orden)?;
-                let id_comprador = orden_de_compra.id_comprador; //guarda la id del comprador y del vendedor
-                let id_vendedor = orden_de_compra.info_publicacion.3;
-                self.comprobar_estado_recibido(orden_de_compra.clone())?;
-                self.calificar_segun_rol(calificacion, orden_de_compra, id_vendedor, id_comprador, usuario) //<---- Que actualice las ordenes
-            }
-            else{
-                return Err("No se encuentra el usuario.".to_string());
-            }
+            let mut usuario = self.buscar_usuario(account_id)?;
+            let mut orden_de_compra = self.buscar_orden(id_orden)?;
+            let id_comprador = orden_de_compra.id_comprador; //guarda la id del comprador y del vendedor
+            let id_vendedor = orden_de_compra.info_publicacion.3;
+            self.comprobar_estado_recibido(orden_de_compra.clone())?;
+            self.calificar_segun_rol(calificacion, orden_de_compra, id_vendedor, id_comprador, usuario) //<---- Que actualice las ordenes
         }
 
         fn comprobar_estado_recibido(&self, orden: OrdenCompra) -> Result<(), String>{
