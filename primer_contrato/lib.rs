@@ -54,6 +54,22 @@ mod primer_contrato {
             }
         }
 
+        #[ink(message)]
+        /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
+        /// Primero se comprueba que el usuario esté en mi sistema. En caso de no estarlo, se retorna un error. 
+        /// Si el usuario se encuentra en mi sistema, se delega el cambio de estado al usuario. Si el rol recibido por parametro, es igual al que posee el usuario se retorna error.
+        /// Si el rol fue efectivamente modificado se vuelve a insertar en el Mapping de usuarios del sistema debido a que su estado se alteró. Retornando Ok, indicando el éxito de la operación.
+        pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
+            let account_id = self.env().caller();
+            self.priv_modificar_rol(account_id, nuevo_rol)
+        }
+        fn priv_modificar_rol(&mut self, account_id: AccountId, nuevo_rol: Rol) -> Result<(), String>{
+            let mut usuario = self.buscar_usuario(account_id)?;
+            usuario.modificar_rol(nuevo_rol)?;
+            self.usuarios.insert(account_id, &usuario);
+            Ok(())
+        }
+
         /// La función cargar_producto se encarga de registrar el producto en mi sistema (se almacena en "historial_productos"). 
         /// Se comprueba que el usuario que invoca la función esté registrado en mi sistema. Si lo está, se comprueba su rol. Si el usuario tiene rol vendedor u ambos, se le asigna un id al producto y luego es agregado a su estructura correspondiente. 
         #[ink(message)]
@@ -139,22 +155,6 @@ mod primer_contrato {
                 }
             }
             Err("No se encontro la publicacion.".to_string())
-        }
-
-        #[ink(message)]
-        /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
-        /// Primero se comprueba que el usuario esté en mi sistema. En caso de no estarlo, se retorna un error. 
-        /// Si el usuario se encuentra en mi sistema, se delega el cambio de estado al usuario. Si el rol recibido por parametro, es igual al que posee el usuario se retorna error.
-        /// Si el rol fue efectivamente modificado se vuelve a insertar en el Mapping de usuarios del sistema debido a que su estado se alteró. Retornando Ok, indicando el éxito de la operación.
-        pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
-            let account_id = self.env().caller();
-            self.priv_modificar_rol(account_id, nuevo_rol)
-        }
-        fn priv_modificar_rol(&mut self, account_id: AccountId, nuevo_rol: Rol) -> Result<(), String>{
-            let mut usuario = self.buscar_usuario(account_id)?;
-            usuario.modificar_rol(nuevo_rol)?;
-            self.usuarios.insert(account_id, &usuario);
-            Ok(())
         }
          
         #[ink(message)]
