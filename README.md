@@ -25,7 +25,7 @@ Se espera que las entregas incluyan una implementación funcional, correctamente
 
 ---
 
-## Contrato 1 – `MarketplacePrincipal` (Core funcional + reputación)
+## [Contrato 1 – `MarketplacePrincipal` (Core funcional + reputación)](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs)
 
 ### Funcionalidades
 
@@ -110,6 +110,7 @@ Incluye:
 ### Bonus (hasta +20%):
 - Sistema de disputas.
 - Simulación de pagos.
+
 
 
 
