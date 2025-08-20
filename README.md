@@ -30,8 +30,8 @@ Se espera que las entregas incluyan una implementación funcional, correctamente
 ### Funcionalidades
 
 #### 👤 Registro y gestión de usuarios
-- Registro de usuario con rol: `Comprador`, `Vendedor` o ambos.
-- Posibilidad de modificar roles posteriores.
+- [Registro de usuario con rol: `Comprador`, `Vendedor` o ambos.] (https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L43)
+- [Posibilidad de modificar roles posteriores.] ()
 
 #### 📦 Publicación de productos
 - Publicar producto con nombre, descripción, precio, cantidad y categoría.
@@ -110,6 +110,7 @@ Incluye:
 ### Bonus (hasta +20%):
 - Sistema de disputas.
 - Simulación de pagos.
+
 
 
 
