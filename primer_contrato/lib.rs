@@ -81,6 +81,19 @@ mod primer_contrato {
             }
         }
 
+        #[ink(message)]
+        pub fn visualizar_productos_propios(&self) -> Result<Vec<(u32, u32)>, String>{
+            let account_id = self.env().caller();
+            self.priv_visualizar_productos_propios(account_id)
+        }
+        fn priv_visualizar_productos_propios(&self, account_id: AccountId) -> Result<Vec<(u32, u32)>, String>{
+            let mut usuario = self.buscar_usuario(account_id)?;
+            usuario.es_vendedor_ambos()?;
+            let lista_de_productos = usuario.lista_de_productos()?;
+            let mut productos = self.cargar_productos_propios(account_id, lista_de_productos);
+            Ok(productos)
+        }
+
         /// La función "crear_publicacion" se encarga de crear la publicación y luego registrarla en mi sistema (se almacena en "historial_publicaciones"). 
         /// Primero se comprueba que el usuario que invocó la función exista en mi sistema. En caso de no estar se retorna un error.
         /// Si el usuario existe, se asigna el id de la publicación, se calcula su precio final, luego se crea la publicación delegando su creación al usuario.
@@ -109,7 +122,6 @@ mod primer_contrato {
             self.usuarios.insert(account_id, &usuario);
             Ok(())
         }
-        
         
         #[ink(message)]
         /// La función "visualizar_productos_de_publicación" se encarga de retornar todos los datos de una publicación especifica (id) recibida por parámetro. 
@@ -188,6 +200,30 @@ mod primer_contrato {
             }
         }
         
+        #[ink(message)]
+        pub fn cancelar_comprar(&mut self, id_orden: u32) -> Result<(), String>{
+            let account_id = self.env().caller();
+            self.priv_cancelar_compra(account_id, id_orden)
+        }
+        fn priv_cancelar_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{
+            let mut usuario = self.buscar_usuario(account_id)?;
+            let mut datos_de_la_orden = self.buscar_orden(id_orden)?;
+            self.se_puede_cancelar(datos_de_la_orden.estado.clone())?;
+            let id_vendedor = datos_de_la_orden.info_publicacion.3;
+            let id_comprador = datos_de_la_orden.id_comprador;
+            let id_publicacion = datos_de_la_orden.info_publicacion.0; 
+            let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
+            if rol == Rol::Comp{
+                datos_de_la_orden.cancelar_compra_comprador()?;
+            }
+            else {
+                datos_de_la_orden.cancelar_compra_vendedor()?;
+                self.devolver_productos(id_publicacion)?;
+            }
+            self.actualizar_ordenes(datos_de_la_orden, id_orden)?;
+            return Ok(());
+        }
+
         /// Funcion para enviar una compra.
         /// Revisa que el usuario este cargado en sistema.
         /// Revisa que la orden de compra este cargada en sistema.
@@ -246,6 +282,23 @@ mod primer_contrato {
             Err("No existe la orden buscada.".to_string())
         }
 
+        #[ink(message)]
+        pub fn calificar (&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
+            let account_id = self.env().caller();
+            self.priv_calificar(id_orden, calificacion, account_id)
+        }
+        fn priv_calificar(&mut self, id_orden:u32, calificacion: u8, account_id: AccountId) -> Result<(), String>{
+            if (calificacion < 1) | (calificacion > 5){ //Revisa que la calificacion este en rango
+                return Err("El valor de la calificacion no es valido (1..5).".to_string())
+            }
+            let mut usuario = self.buscar_usuario(account_id)?;
+            let mut orden_de_compra = self.buscar_orden(id_orden)?;
+            let id_comprador = orden_de_compra.id_comprador; //guarda la id del comprador y del vendedor
+            let id_vendedor = orden_de_compra.info_publicacion.3;
+            self.comprobar_estado_recibido(orden_de_compra.clone())?;
+            self.calificar_segun_rol(calificacion, orden_de_compra, id_vendedor, id_comprador, usuario) //<---- Que actualice las ordenes
+        }
+
         //  Fn calcular_precio final  va a recibir los productos de la publicacion y va a prodecer a realizar 
         //  la suma de los valores de los productos
         //  esto retorna el valor total 
@@ -296,21 +349,6 @@ mod primer_contrato {
             Ok(())
         }
 
-        //CORRECCIONES 12/08
-
-        #[ink(message)]
-        pub fn visualizar_productos_propios(&self) -> Result<Vec<(u32, u32)>, String>{
-            let account_id = self.env().caller();
-            self.priv_visualizar_productos_propios(account_id)
-        }
-        fn priv_visualizar_productos_propios(&self, account_id: AccountId) -> Result<Vec<(u32, u32)>, String>{
-            let mut usuario = self.buscar_usuario(account_id)?;
-            usuario.es_vendedor_ambos()?;
-            let lista_de_productos = usuario.lista_de_productos()?;
-            let mut productos = self.cargar_productos_propios(account_id, lista_de_productos);
-            Ok(productos)
-        }
-
         fn cargar_productos_propios(&self, account_id: AccountId, lista_de_productos: Vec<u32>) -> Vec<(u32, u32)>{
             let mut productos = Vec::new();
             for id_producto in lista_de_productos {
@@ -321,7 +359,6 @@ mod primer_contrato {
             productos
         }
 
-        //CORRECCIONES 14/08
         fn puede_restockear(&self, publicacion: Publicacion) -> bool{
             for (id, cantidad) in publicacion.productos{
                 let stock = self.historial_productos.get(id).unwrap().1;
@@ -341,33 +378,6 @@ mod primer_contrato {
                 }
             }
             return Err("No se encontro publicacion".to_string());
-        }
-
-        //FUNCIONES ENTREGA FINAL
-
-        //18/08
-        #[ink(message)]
-        pub fn cancelar_comprar(&mut self, id_orden: u32) -> Result<(), String>{
-            let account_id = self.env().caller();
-            self.priv_cancelar_compra(account_id, id_orden)
-        }
-        fn priv_cancelar_compra(&mut self, account_id: AccountId, id_orden: u32) -> Result<(), String>{
-            let mut usuario = self.buscar_usuario(account_id)?;
-            let mut datos_de_la_orden = self.buscar_orden(id_orden)?;
-            self.se_puede_cancelar(datos_de_la_orden.estado.clone())?;
-            let id_vendedor = datos_de_la_orden.info_publicacion.3;
-            let id_comprador = datos_de_la_orden.id_comprador;
-            let id_publicacion = datos_de_la_orden.info_publicacion.0; 
-            let rol = usuario.comprobar_rol(id_vendedor, id_comprador)?;
-            if rol == Rol::Comp{
-                datos_de_la_orden.cancelar_compra_comprador()?;
-            }
-            else {
-                datos_de_la_orden.cancelar_compra_vendedor()?;
-                self.devolver_productos(id_publicacion)?;
-            }
-            self.actualizar_ordenes(datos_de_la_orden, id_orden)?;
-            return Ok(());
         }
 
         fn se_puede_cancelar(&self, estado_de_la_orden: EstadoCompra)-> Result<(), String>{
@@ -445,25 +455,6 @@ mod primer_contrato {
                 }
             }
             return Err("No se encontro la orden de compra.".to_string());
-        }
-
-        //19/08
-
-        #[ink(message)]
-        pub fn calificar (&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
-            let account_id = self.env().caller();
-            self.priv_calificar(id_orden, calificacion, account_id)
-        }
-        fn priv_calificar(&mut self, id_orden:u32, calificacion: u8, account_id: AccountId) -> Result<(), String>{
-            if (calificacion < 1) | (calificacion > 5){ //Revisa que la calificacion este en rango
-                return Err("El valor de la calificacion no es valido (1..5).".to_string())
-            }
-            let mut usuario = self.buscar_usuario(account_id)?;
-            let mut orden_de_compra = self.buscar_orden(id_orden)?;
-            let id_comprador = orden_de_compra.id_comprador; //guarda la id del comprador y del vendedor
-            let id_vendedor = orden_de_compra.info_publicacion.3;
-            self.comprobar_estado_recibido(orden_de_compra.clone())?;
-            self.calificar_segun_rol(calificacion, orden_de_compra, id_vendedor, id_comprador, usuario) //<---- Que actualice las ordenes
         }
 
         fn comprobar_estado_recibido(&self, orden: OrdenCompra) -> Result<(), String>{
