@@ -1,6 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 #![allow(non_local_definitions)]
 
+pub use self::primer_contrato::{
+    PrimerContratoRef,
+};
+
 #[ink::contract]
 mod primer_contrato {
     use ink::storage::Mapping;
@@ -55,6 +59,11 @@ mod primer_contrato {
             }
         }
 
+        #[ink(message)]
+        pub fn get_dimension_logica(&self) -> u32{
+            self.dimension_logica_productos
+        }
+        
         #[ink(message)]
         /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
         pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
@@ -603,8 +612,6 @@ mod primer_contrato {
         datos_vendedor: Option<Vendedor>,
     }
     impl Usuario {
-        
-        // CORRECCIONES 12/08
 
         fn es_vendedor_ambos(&self) -> Result<(), String>{
             if self.rol == Rol::Comp{
@@ -653,11 +660,7 @@ mod primer_contrato {
                 return Err("El vendedor no tiene datos.".to_string())
             }
         }
-        /// Funcion que permite crear un nuevo usuario, cargandole los datos correspondientes a este.
-        /// Revisa el lol del usuario e inicaliza los datos correspondientes:
-        /// Si es Comp -> datos_comprador = Some()
-        /// Si es Vend -> datos_vendedor = Some()
-        /// Si es Ambos -> datos_comprador = Some(), datos_vendedor = Some()
+        
         pub fn nuevo(id: AccountId,nombre: String,apellido: String,direccion: String,email: String,rol: Rol) -> Usuario {
             Usuario {
                 id_usuario: id,
@@ -684,10 +687,6 @@ mod primer_contrato {
             }
         }
 
-        
-        /// Funcion que permite crear una publicacion. Llamada por sistema.
-        /// Revisa que el usuario tenga el rol Vend o Ambos
-        /// Llama a la funcion de Vendedor
         fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Result<Publicacion, String>{  //productos_a_publicar = Vec<(id, cantidad)>
             if self.rol == Rol::Comp {
                 Err("El usuario no es vendedor.".to_string())
@@ -697,10 +696,6 @@ mod primer_contrato {
             } 
         }
 
-        
-        /// Funcion que permite modificar el rol de un usuario. Llamada por sistema.
-        /// Revisa que el rol a cambiar sea valido
-        /// Si habia datos previos (en caso de haber cambiado de rol anteriormente) los usa, sino inicializa los campos
         fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
             if nuevo_rol == self.rol {
                 Err("El usuario ya posee ese rol.".to_string())
@@ -757,10 +752,6 @@ mod primer_contrato {
             }
         }
         
-        
-        /// Funcion para crear una orden de compra. Llamada por sistema.
-        /// Revisa que el usuario tenga el rol de Comp o Ambos.
-        /// Llama a la funcion de Comprador
         fn crear_orden_de_compra(&mut self, id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> Result<OrdenCompra, String>{
             if self.rol == Rol::Vend{
                 Err("El usuario no esta autorizado para realizar una compra. ERROR: No posee el rol comprador.".to_string())
@@ -770,9 +761,6 @@ mod primer_contrato {
             }
         }
 
-        /// Funcion para enviar una compra. Llamada por sistema.
-        /// Revisa que el usuario tenga el rol Vend o Ambos.
-        /// Llama a la funcion de Vendedor.
         fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
             if self.rol == Rol::Comp{
                 Err("El usuario no posee el rol de vendedor.".to_string())
@@ -782,9 +770,6 @@ mod primer_contrato {
             }
         }
 
-        /// Funcion para recibir una compra. Llamada por sistema.
-        /// Revisa que el usuario tenga el rol Comp o Ambos.
-        /// Llama a la funcion de Comprador.
         fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
             if self.rol == Rol::Vend{
                 Err("El usuario no posee el rol de comprador.".to_string())
@@ -793,10 +778,6 @@ mod primer_contrato {
                 self.datos_comprador.as_ref().expect("No hay datos del comprador.").recibir_compra(id_orden)
             }
         }
-
-        //FUNCIONES ENTREGA FINAL
-        
-        //18/08
 
         fn comprobar_rol(&self, id_vendedor: AccountId, id_comprador: AccountId) -> Result<Rol, String>{
             match self.rol{
@@ -866,18 +847,12 @@ mod primer_contrato {
         reputacion_como_comprador: Vec<u8>, 
     }
     impl Comprador{
-        /// Esta fn crear orden compra es llamada por usuario y recibe estos datos:
-        ///     Id de la orden, informarcion de la publicacion, y ademas el id del comprador 
-        /// Se guarda el id de la orden
-        /// Genera la orden de comrpra y la devuelve al sistema 
+
         fn crear_orden_de_compra(&mut self, id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
             self.ordenes_de_compra.push(id_orden);
             OrdenCompra::crear_orden_de_compra(id_orden, publicacion, id_comprador)
         }
 
-        /// esta fn recibir_compra es llamada por usuario y recibe estos datos:=
-        /// compra indica si el id de la orden esta en el vector de ordenes de compra perteneciente al comprador 
-        /// en caso de no estar  genera el error
         fn recibir_compra(&self, id_orden: u32) -> Result<(), String>{
             if self.ordenes_de_compra.contains(&id_orden){
                 Ok(())
@@ -905,21 +880,12 @@ mod primer_contrato {
     }
     impl Vendedor{
 
-        // Esta fn crear_publicacion es llamada por usuario recibe como datos  los productos que va a tener la publicacion (productos a publicar)
-        // el precio final / coste de todos los productos juntos 
-        // el id que tendra la publicacion
-        // genera la publicacion 
-        // el vendedor se guarda el  id_publicacion que se genero y se devuelve la publicacion generada para que se guarde en el sistema  
         fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion { 
             let publicacion = Publicacion::crear_publicacion(productos_a_publicar, precio_final, id_publicacion, id_vendedor);
             self.publicaciones.push(id_publicacion);
             publicacion
         }
 
-
-        // Esta fn enviar_compra es llamada por usuario recibe como dato  el id de la publicacion 
-        // si el id se encuentra en  las publicaciones del vendenderor devuelve ok // exito 
-        // en caso contrario  la pubiclacion no seria  de ese vendedor 
         fn enviar_compra(&self, id_publicacion: u32) -> Result<(), String>{
             if self.publicaciones.contains(&id_publicacion){
                 Ok(())
@@ -972,8 +938,6 @@ mod primer_contrato {
         disponible: bool,
     }
 
-    /// Funcion para crear y devolver una publicacion. Llamada por Vendedor.
-    /// Crea la publicacion con los datos pasados por parametro.
     impl Publicacion {
         fn crear_publicacion(productos_a_publicar: Vec<(u32, u32)>, precio_final: u32, id_publicacion: u32, id_vendedor: AccountId) -> Publicacion{
             Publicacion{
@@ -1006,9 +970,8 @@ mod primer_contrato {
         categoria:String,
     }
     impl Producto{
-        /// Funcion para crear y devolver un producto. Llamada por Sistema.
-        /// Crea un producto con los datos pasados por parametro.
-        /// Para el campo de categoria, sanitiza el String, dejando todo en minuscula y sin espacios (para evitar conflictos)
+
+
         fn cargar_producto(id: u32, nombre: String, descripcion: String, precio: u32, categoria: String) -> Producto{
             let categoria_limpia = categoria.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
             Producto{
@@ -1043,8 +1006,6 @@ mod primer_contrato {
     }
     impl OrdenCompra{
         
-        /// Funcion para crear y devolver una orden de compra. Llamada por Comprador.
-        /// Crea una orden con los datos pasados por parametros, tanto "cancelacion" como "calificaciones" se inicializan con los dos campos en false.
         fn crear_orden_de_compra(id_orden: u32, publicacion: Publicacion, id_comprador: AccountId) -> OrdenCompra{
             let id_publicacion = publicacion.id;
             let productos = publicacion.productos;
@@ -1062,10 +1023,6 @@ mod primer_contrato {
                 calificaciones,
             }
         }
-
-        //FUNCIONES ENTREGA FINAL
-
-        //18/08
         
         fn cancelar_compra_comprador(&mut self) -> Result<(), String>{
             if self.cancelacion.1 {
