@@ -3,6 +3,8 @@
 
 pub use self::primer_contrato::{
     PrimerContratoRef,
+    Usuario,
+    Rol,
 };
 
 #[ink::contract]
@@ -11,14 +13,14 @@ mod primer_contrato {
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
     use ink::prelude::string::{String, ToString};
-
 /////////////////////////// SISTEMA ///////////////////////////
     /// Struct que hace de "sistema". Encargado de persistir los datos. 
     /// Los usuarios se almacenan en un Mapping. La clave es el AccountId, y su contenido los datos del usuario.
     /// Las publicaciones realizadas se almacenan en un StorageVec, cuyo contenido es una tupla con el id de la publicación, y los datos de la misma. (id, publicacion).
     /// Los productos se almacenan en un Mapping. Donde la clave es el id del producto. y su contenido es una tupla que contiene los datos del producto y el stock de éste. <id, (producto, stock)>. 
     /// Las ordenes de compra se almacenan en un StorageVec. Cuyo contenido es una tupla con el id de la orden y los datos de la misma. (id, orden)   
-    /// Por último se encuentra la dimensión lógica de "historial_productos" utilizada para definir la id de los productos que se agregan al sistema. 
+    /// La dimensión lógica de "historial_productos" utilizada para definir la id de los productos que se agregan al sistema. 
+    /// Las ids de los usuarios registrados (para poder recorrer el mapping de usuarios)
     #[ink(storage)]
     pub struct PrimerContrato {
         usuarios: Mapping<AccountId, Usuario>,
@@ -26,6 +28,7 @@ mod primer_contrato {
         historial_productos: Mapping<u32, (Producto, u32)>, 
         historial_ordenes_de_compra: StorageVec<(u32, OrdenCompra)>,   
         dimension_logica_productos: u32, 
+        vector_ids_usuarios: StorageVec<AccountId>,
     }
     impl PrimerContrato {
 
@@ -38,6 +41,7 @@ mod primer_contrato {
                 historial_productos: Mapping::default(),
                 historial_ordenes_de_compra:  StorageVec::new(),
                 dimension_logica_productos: 0,
+                vector_ids_usuarios: StorageVec::new(),
             }
         }
 
@@ -55,6 +59,7 @@ mod primer_contrato {
             } else {
                 let usuario = Usuario::nuevo(account_id, nombre, apellido, direccion, email, rol);
                 self.usuarios.insert(account_id, &usuario); 
+                self.vector_ids_usuarios.push(&account_id);
                 Ok(())
             }
         }
@@ -579,6 +584,25 @@ mod primer_contrato {
             }
         }
 
+        fn buscar_id_usuario(&self, pos: u32) -> Result<AccountId, String>{
+            if let Some(id) = self.vector_ids_usuarios.get(pos){
+                return Ok(id)
+            } else{
+                return Err("No se encontro el id.".to_string())
+            }
+        }
+
+        //Getters para el segundo contrato
+        
+        #[ink(message)]
+        pub fn get_usuarios(&self) -> Result<Vec<Usuario>, String>{
+            let mut vec_usuarios= Vec::new();
+            
+            for i in 0..self.vector_ids_usuarios.len(){
+                vec_usuarios.push(self.buscar_usuario(self.buscar_id_usuario(i)?)?);
+            }
+            return Ok(vec_usuarios);
+        }
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -601,15 +625,15 @@ mod primer_contrato {
     /// datos_comprador almacena toda la información correspondiente al rol comprador. El Option será Some cuando éste posea el rol Comp u Ambos. Si en algún momento deja de serlo, el Option seguirá en Some con toda la información.  
     /// datos_vendedor almacena toda la información correspondiente al rol vendedor. El Option será Some cuando éste posea el rol Vend u Ambos. Si en algún momento deja de serlo, el Option seguirá en Some con toda la información.  
     #[derive(Clone)]
-    struct Usuario{
-        id_usuario: AccountId,
-        nombre: String,
-        apellido: String,
-        direccion: String,
-        email: String,
-        rol: Rol,
-        datos_comprador: Option<Comprador>,
-        datos_vendedor: Option<Vendedor>,
+    pub struct Usuario{
+        pub id_usuario: AccountId,
+        pub nombre: String,
+        pub apellido: String,
+        pub direccion: String,
+        pub email: String,
+        pub rol: Rol,
+        pub datos_comprador: Option<Comprador>,
+        pub datos_vendedor: Option<Vendedor>,
     }
     impl Usuario {
 
@@ -842,9 +866,9 @@ mod primer_contrato {
     /// ordenes_de_compra, es un Vec que almacena los IDs de cada orden realizada por el comprador. 
     /// reputacion_como_comprador, es un Vec que almacena las califaciones recibidas por vendedores. 
     #[derive(Clone)]
-    struct Comprador{
-        ordenes_de_compra: Vec<u32>,
-        reputacion_como_comprador: Vec<u8>, 
+    pub struct Comprador{
+        pub ordenes_de_compra: Vec<u32>,
+        pub reputacion_como_comprador: Vec<u8>, 
     }
     impl Comprador{
 
@@ -873,10 +897,10 @@ mod primer_contrato {
     /// productos, es un Vec con las ids de los productos de su propiedad. 
     /// reputacion_como_vendedor, es un Vec que almacena las califaciones recibidas por compradores. 
     #[derive(Clone)]
-    struct Vendedor{
-        productos: Vec<u32>,
-        publicaciones: Vec<u32>,
-        reputacion_como_vendedor: Vec<u8>, 
+    pub struct Vendedor{
+        pub productos: Vec<u32>,
+        pub publicaciones: Vec<u32>,
+        pub reputacion_como_vendedor: Vec<u8>, 
     }
     impl Vendedor{
 
