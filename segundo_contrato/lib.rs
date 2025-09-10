@@ -3,7 +3,7 @@
 #[ink::contract]
 mod segundo_contrato {
 
-    use primer_contrato::{PrimerContratoRef, Usuario, Rol};
+    use primer_contrato::{PrimerContratoRef, Usuario, Rol, EstadoCompra, OrdenCompra};
     use ink::storage::Mapping;
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
@@ -43,11 +43,6 @@ mod segundo_contrato {
         }
 
         #[ink(message)]
-        pub fn nada(&self) -> u8{
-            return 4
-        }
-
-        #[ink(message)]
         pub fn vendedores_mejor_reputacion(&self) -> Result <Vec <AccountId>, String>{
             let vendedores = self.filtrar_vendedores()?;
             let vec_contador: Vec<(AccountId, u8)> = self.contar_promedios_vendedor(vendedores)?;
@@ -58,6 +53,26 @@ mod segundo_contrato {
         }
 
         #[ink(message)]
+        pub fn productos_mas_vendidos(&self, cant: u32) -> Result<Vec<(u32, u32)>, String>{
+            let ordenes = self.marketplace.get_ordenes()?;
+            let ordenes = self.filtrar_validas(ordenes);
+            if ordenes.is_empty() {
+                return Err("No hay productos vendidos de ventas concretadas.".to_string())
+            }
+            let mut vector_contador: Vec<(u32, u32)> = Vec::new();
+
+            for orden in ordenes{
+                self.procesar_orden(&mut vector_contador, orden)?;
+            }
+            
+            vector_contador.sort_by(|a, b| b.1.cmp(&a.1));
+
+
+            let top_x = vector_contador.into_iter().take(cant as usize).collect();
+            return Ok(top_x);
+        } 
+
+        #[ink(message)]
         pub fn compradores_mejor_reputacion(&self) -> Result<Vec<AccountId>, String>{
             let compradores = self.filtrar_compradores()?;
             let vec_contador: Vec<(AccountId, u8)> = self.contar_promedios_comprador(compradores)?;
@@ -65,6 +80,34 @@ mod segundo_contrato {
             let top5: Vec<AccountId> = self.calcular_5_mejores(vec_contador)?;
 
             return Ok(top5);
+        }
+
+        #[ink(message)]
+        pub fn cantidad_ordenes_por_usuarios(&self) -> Result<Vec<(AccountId, u32)>, String>{
+            let usuarios = self.marketplace.get_usuarios()?;
+            let usuarios = self.filtrar_con_datos_comprador(usuarios);
+
+            if usuarios.is_empty(){
+                return Err("No hay usuarios con datos de comprador cargados en sistema.".to_string());
+            }
+
+            let cantidades = self.contar_cantidades(usuarios);
+
+            return Ok(cantidades);
+        }
+
+        fn contar_cantidades(&self, usuarios: Vec<Usuario>) -> Vec<(AccountId, u32)>{
+            let mut cantidades = Vec::new();
+
+            for usuario in usuarios {
+                cantidades.push((usuario.id_usuario, usuario.datos_comprador.unwrap().ordenes_de_compra.len() as u32))
+            }
+
+            cantidades
+        }
+
+        fn filtrar_con_datos_comprador(&self, usuarios: Vec<Usuario>) -> Vec<Usuario>{
+            usuarios.into_iter().filter(|usuario| usuario.datos_comprador.is_some()).collect()
         }
         
         fn calcular_5_mejores(&self, vec_contador: Vec<(AccountId, u8)>) -> Result<Vec<AccountId>, String>{
@@ -136,9 +179,29 @@ mod segundo_contrato {
             let mitad = (n as u32) / 2;
             let avg_u32 = (suma.saturating_add(mitad)).checked_div(n as u32).unwrap_or(0);
             avg_u32.min(u32::from(u8::MAX)) as u8
-       }
+        }
 
+        fn procesar_orden(&self, vector_contador: &mut Vec<(u32, u32)>, orden: OrdenCompra) -> Result<(), String> {
+            for (id_producto, cantidad_producto) in orden.info_publicacion.1{
+                if let Some(pos) = vector_contador.iter().position(|(id, _)| *id == id_producto){
+                    let mut dato= *vector_contador.get_mut(pos).unwrap();
+                    dato.1 = dato.1.checked_add(cantidad_producto).ok_or("Error al sumar.")?;
+                    vector_contador.insert(pos, dato);
+                }
+                else {
+                    vector_contador.push((id_producto, cantidad_producto))
+                }
+            }
+            return Ok(())
+        }
+
+        fn filtrar_validas(&self, ordenes: Vec<OrdenCompra>) -> Vec<OrdenCompra> {
+            ordenes.into_iter()
+            .filter(|orden| orden.estado != EstadoCompra::Pendiente && orden.estado != EstadoCompra::Cancelada)
+            .collect()
+        }
         
+
 
     }
 

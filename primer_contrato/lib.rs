@@ -5,6 +5,8 @@ pub use self::primer_contrato::{
     PrimerContratoRef,
     Usuario,
     Rol,
+    EstadoCompra,
+    OrdenCompra,
 };
 
 #[ink::contract]
@@ -603,6 +605,23 @@ mod primer_contrato {
             }
             return Ok(vec_usuarios);
         }
+
+        #[ink(message)]
+        pub fn get_ordenes(&self) -> Result<Vec<OrdenCompra>, String> {
+            let mut vec_ordenes = Vec::new();
+
+            for i in 0..self.historial_ordenes_de_compra.len() {
+                if let Some((_, orden)) = self.historial_ordenes_de_compra.get(i){
+                    vec_ordenes.push(orden)
+                }
+            }
+            if vec_ordenes.is_empty(){
+                return Err("No hay ordenes de compra cargadas.".to_string());
+            }
+            else {
+                return Ok(vec_ordenes);
+            }
+        }
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -1020,13 +1039,13 @@ mod primer_contrato {
     /// info_publicacion, tupla que almacena los datos de la publicación. (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor).
     /// id_comprador, almacena el id del comprador de la orden de compra. 
     /// calificaciones, es una tupla que indica si el vendor y/o comprador realizó la calificación a su contraparte. (vendedor, comprador)
-    struct OrdenCompra{
-        id: u32,
-        estado: EstadoCompra,
-        cancelacion: (bool, bool), 
-        info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId),
-        id_comprador:AccountId,
-        calificaciones: (bool, bool),
+    pub struct OrdenCompra{
+        pub id: u32,
+        pub estado: EstadoCompra,
+        pub cancelacion: (bool, bool), 
+        pub info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId),
+        pub id_comprador:AccountId,
+        pub calificaciones: (bool, bool),
     }
     impl OrdenCompra{
         
@@ -1086,7 +1105,7 @@ mod primer_contrato {
     /// Enviado (cuando el vendedor envía los productos de la publicación).
     /// Recibido (cuando el comprador recibe los productos de la orden). 
     /// Cancelada (solo se asignará cuando ambas partes de la orden de compra cancelan la misma). 
-    enum EstadoCompra{
+    pub enum EstadoCompra{
         Pendiente,
         Enviado,
         Recibido,
