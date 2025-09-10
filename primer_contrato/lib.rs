@@ -65,11 +65,6 @@ mod primer_contrato {
                 Ok(())
             }
         }
-
-        #[ink(message)]
-        pub fn get_dimension_logica(&self) -> u32{
-            self.dimension_logica_productos
-        }
         
         #[ink(message)]
         /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
@@ -90,11 +85,11 @@ mod primer_contrato {
         /// el stock recibido por parametro es 0; 
         /// si el usuario tiene rol Comp.
         #[ink(message)]
-        pub fn cargar_producto(&mut self, nombre: String, descripcion: String, precio: u32, categoria: String, stock: u32) -> Result<(), String>{
+        pub fn cargar_producto(&mut self, nombre: String, descripcion: String, precio: u32, categoria: Categoria, stock: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_cargar_producto(account_id, nombre, descripcion, precio, categoria, stock)
         }
-        fn priv_cargar_producto(&mut self, account_id: AccountId, nombre: String, descripcion: String, precio: u32, categoria: String, stock: u32) -> Result<(), String>{
+        fn priv_cargar_producto(&mut self, account_id: AccountId, nombre: String, descripcion: String, precio: u32, categoria: Categoria, stock: u32) -> Result<(), String>{
             if precio == 0 { //<---- Desde. Correccion punto 12. 12/08
                 return Err("Precio no valido".to_string())
             }
@@ -1004,25 +999,24 @@ mod primer_contrato {
     /// nombre, almacena el nombre del producto.
     /// descripcion, almacena la descripción de un producto.
     /// precio, almacena el precio del producto.
-    /// categoria, almacena la categoria. La categoria al ser un String, se sanitiza previo a ser cargada. 
+    /// categoria, almacena la categoria. 
     pub struct Producto{
         id: u32,
         nombre: String,
         descripcion: String,
         precio: u32,
-        categoria:String,
+        categoria:Categoria,
     }
     impl Producto{
 
 
-        fn cargar_producto(id: u32, nombre: String, descripcion: String, precio: u32, categoria: String) -> Producto{
-            let categoria_limpia = categoria.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
+        fn cargar_producto(id: u32, nombre: String, descripcion: String, precio: u32, categoria: Categoria) -> Producto{
             Producto{
                 id,
                 nombre,
                 descripcion,
                 precio,
-                categoria: categoria_limpia,
+                categoria,
             }
         }
     }
@@ -1111,6 +1105,22 @@ mod primer_contrato {
         Recibido,
         Cancelada,
     }
+
+/////////////////////////// CATEGORIAS ///////////////////////////
+#[derive(Clone, PartialEq, Debug)]
+#[ink::scale_derive(Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout))]
+
+    pub enum Categoria{
+        Electrodomesticos,
+        Limpieza,
+        Alimentos,
+        Hogar,
+        Ropa,
+        Mascotas,
+        Libreria,
+        Otro,
+}
 
 //////////////////////////TEST/////////////////////////////////////
 mod tests {
