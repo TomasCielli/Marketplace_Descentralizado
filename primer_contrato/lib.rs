@@ -7,6 +7,8 @@ pub use self::primer_contrato::{
     Rol,
     EstadoCompra,
     OrdenCompra,
+    Categoria,
+    Producto,
 };
 
 #[ink::contract]
@@ -592,6 +594,18 @@ mod primer_contrato {
         //Getters para el segundo contrato
         
         #[ink(message)]
+        pub fn get_productos(&self) -> Vec<Producto>{
+            let mut vec_productos = Vec::new();
+
+            for i in 1..=self.dimension_logica_productos {
+                if let Some((producto, _stock)) = self.historial_productos.get(i) {
+                    vec_productos.push(producto);
+                }
+            }
+            vec_productos
+        }
+
+        #[ink(message)]
         pub fn get_usuarios(&self) -> Result<Vec<Usuario>, String>{
             let mut vec_usuarios= Vec::new();
             
@@ -617,6 +631,7 @@ mod primer_contrato {
                 return Ok(vec_ordenes);
             }
         }
+
     }
     impl Default for PrimerContrato {
         fn default() -> Self {
@@ -1001,11 +1016,11 @@ mod primer_contrato {
     /// precio, almacena el precio del producto.
     /// categoria, almacena la categoria. 
     pub struct Producto{
-        id: u32,
-        nombre: String,
-        descripcion: String,
-        precio: u32,
-        categoria:Categoria,
+        pub id: u32,
+        pub nombre: String,
+        pub descripcion: String,
+        pub precio: u32,
+        pub categoria:Categoria,
     }
     impl Producto{
 
