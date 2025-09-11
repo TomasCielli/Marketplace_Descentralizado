@@ -3,7 +3,7 @@
 #[ink::contract]
 mod segundo_contrato {
 
-    use primer_contrato::{PrimerContratoRef, Usuario, Rol, EstadoCompra, OrdenCompra};
+    use primer_contrato::{PrimerContratoRef, Usuario, Rol, EstadoCompra, OrdenCompra, Categoria, Producto};
     use ink::storage::Mapping;
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
@@ -96,6 +96,48 @@ mod segundo_contrato {
             return Ok(cantidades);
         }
 
+        #[ink(message)]
+        pub fn estadisticas_por_categoria(&self) -> Result< Vec< (Categoria, u32, u8)>, String>{
+            let ordenes = self.marketplace.get_ordenes()?;
+            let ordenes = self.filtrar_validas(ordenes);
+            let productos = self.marketplace.get_productos();
+            let mut vector_categorias: Vec<(Categoria, u32, u8)> = Vec::new();
+
+            let _ = self.total_de_ventas_categorias(ordenes.clone(), productos.clone(), &mut vector_categorias)?;
+            /*_ = self.calificacion_promedio_categorias(ordenes, &vector_categorias)?;*/
+
+            return Ok(vector_categorias)
+        }
+
+        fn total_de_ventas_categorias(&self, ordenes: Vec<OrdenCompra>, productos: Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>)->Result<(), String>{
+            for orden in ordenes{
+                let _ = self.procesar_categorias(&productos, vector_categorias, orden)?;
+            }
+            return Ok(());
+        }
+
+        fn procesar_categorias(&self, productos: &Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>, orden: OrdenCompra)-> Result<(), String> {
+            for (id, _) in orden.info_publicacion.1{
+                if let Some(pos) = productos.iter().position(|producto| producto.id == id){
+                    let categoria = productos.get(pos).unwrap().categoria.clone();
+                    let _ = self.contar_categoria(categoria, vector_categorias)?;
+                }
+            }
+            return Ok(())
+        }
+
+        fn contar_categoria(&self, categoria: Categoria, vector_categorias: &mut Vec<(Categoria, u32, u8)>)-> Result<(), String>{
+            if let Some(pos) = vector_categorias.iter().position(|(categoria_del_vector,_,_)| *categoria_del_vector == categoria){
+                let mut nodo_vector = vector_categorias.get_mut(pos).unwrap();
+                nodo_vector.1 = nodo_vector.1.checked_add(1).ok_or("Error al sumar.")?;
+            }
+            else {
+                vector_categorias.push((categoria, 1, 0));
+            }
+            return Ok(());
+        }
+
+
         fn contar_cantidades(&self, usuarios: Vec<Usuario>) -> Vec<(AccountId, u32)>{
             let mut cantidades = Vec::new();
 
@@ -186,7 +228,7 @@ mod segundo_contrato {
                 if let Some(pos) = vector_contador.iter().position(|(id, _)| *id == id_producto){
                     let mut dato= *vector_contador.get_mut(pos).unwrap();
                     dato.1 = dato.1.checked_add(cantidad_producto).ok_or("Error al sumar.")?;
-                    vector_contador.insert(pos, dato);
+                    vector_contador.insert(pos, dato); // <------ Capaz q lo borramos
                 }
                 else {
                     vector_contador.push((id_producto, cantidad_producto))
