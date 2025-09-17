@@ -34,13 +34,6 @@ mod segundo_contrato {
             Self { marketplace }
         }
 
-        /// Constructor that initializes the `bool` value to `false`.
-        ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
-        }
 
         #[ink(message)]
         pub fn vendedores_mejor_reputacion(&self) -> Result <Vec <AccountId>, String>{
@@ -53,7 +46,7 @@ mod segundo_contrato {
         }
 
         #[ink(message)]
-        pub fn productos_mas_vendidos(&self, cant: u32) -> Result<Vec<(u32, u32)>, String>{
+        pub fn productos_mas_vendidos(&self, top: Option<u32>) -> Result<Vec<(u32, u32)>, String>{
             let ordenes = self.marketplace.get_ordenes()?;
             let ordenes = self.filtrar_validas(ordenes);
             if ordenes.is_empty() {
@@ -67,9 +60,13 @@ mod segundo_contrato {
             
             vector_contador.sort_by(|a, b| b.1.cmp(&a.1));
 
-
-            let top_x = vector_contador.into_iter().take(cant as usize).collect();
-            return Ok(top_x);
+            if let Some(cant) = top{
+                let top_x = vector_contador.into_iter().take(cant as usize).collect();
+                return Ok(top_x);
+            } else {
+                return Ok(vector_contador);
+            }
+            
         } 
 
         #[ink(message)]
@@ -102,37 +99,61 @@ mod segundo_contrato {
             let ordenes = self.filtrar_validas(ordenes);
             let productos = self.marketplace.get_productos();
             let mut vector_categorias: Vec<(Categoria, u32, u8)> = Vec::new();
+            let mut vector_puntuacion_total: Vec<(Categoria, u32)> = Vec::new();
 
-            let _ = self.total_de_ventas_categorias(ordenes.clone(), productos.clone(), &mut vector_categorias)?;
-            /*_ = self.calificacion_promedio_categorias(ordenes, &vector_categorias)?;*/
+            let _ = self.total_de_ventas_categorias(ordenes.clone(), productos.clone(), &mut vector_categorias, &mut vector_puntuacion_total)?;
+            let _ = self.calificacion_promedio_categorias(&mut vector_categorias, vector_puntuacion_total)?;
 
             return Ok(vector_categorias)
         }
 
-        fn total_de_ventas_categorias(&self, ordenes: Vec<OrdenCompra>, productos: Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>)->Result<(), String>{
+        fn calificacion_promedio_categorias(&self, vector_categorias: &mut Vec<(Categoria, u32, u8)>, vector_puntuacion_total: Vec<(Categoria, u32)>)-> Result<(), String>{
+            for i in 0..vector_categorias.len(){
+                let cantidad = vector_categorias[i].1;
+                let total = vector_puntuacion_total[i].1;
+                let promedio = total.checked_div(cantidad).ok_or("Error al dividir.")?;
+                vector_categorias[i].2 = promedio as u8;
+            }
+            Ok(())
+        }
+
+        fn total_de_ventas_categorias(&self, ordenes: Vec<OrdenCompra>, productos: Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>, vector_puntuacion_total: &mut Vec<(Categoria, u32)>)->Result<(), String>{
             for orden in ordenes{
-                let _ = self.procesar_categorias(&productos, vector_categorias, orden)?;
+                let _ = self.procesar_categorias(&productos, vector_categorias, orden, vector_puntuacion_total)?;
             }
             return Ok(());
         }
 
-        fn procesar_categorias(&self, productos: &Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>, orden: OrdenCompra)-> Result<(), String> {
+        fn procesar_categorias(&self, productos: &Vec<Producto>, vector_categorias: &mut Vec<(Categoria, u32, u8)>, orden: OrdenCompra, vector_puntuacion_total: &mut Vec<(Categoria, u32)>)-> Result<(), String> {
             for (id, _) in orden.info_publicacion.1{
                 if let Some(pos) = productos.iter().position(|producto| producto.id == id){
                     let categoria = productos.get(pos).unwrap().categoria.clone();
-                    let _ = self.contar_categoria(categoria, vector_categorias)?;
+                    let _ = self.contar_categoria(categoria.clone(), vector_categorias, vector_puntuacion_total)?;
+                    let _ = self.contar_puntuacion(categoria, vector_puntuacion_total, orden.puntuacion_del_comprador)?;
                 }
             }
             return Ok(())
         }
 
-        fn contar_categoria(&self, categoria: Categoria, vector_categorias: &mut Vec<(Categoria, u32, u8)>)-> Result<(), String>{
+        fn contar_puntuacion(&self, categoria: Categoria, vector_puntuacion_total: &mut Vec<(Categoria, u32)>, puntuacion: Option<u8>) -> Result<(), String>{
+            if let Some(nota) = puntuacion{
+                let pos = vector_puntuacion_total.iter().position(|(categoria_del_vector,_)| *categoria_del_vector == categoria).unwrap();
+                let mut nodo_vector = vector_puntuacion_total.get_mut(pos).unwrap();
+                nodo_vector.1 = nodo_vector.1.checked_add(nota as u32).ok_or("Error al sumar.")?;
+                Ok(())
+            } else{
+                Ok(())
+            }
+        }
+
+        fn contar_categoria(&self, categoria: Categoria, vector_categorias: &mut Vec<(Categoria, u32, u8)>, vector_puntuacion_total: &mut Vec<(Categoria, u32)>)-> Result<(), String>{
             if let Some(pos) = vector_categorias.iter().position(|(categoria_del_vector,_,_)| *categoria_del_vector == categoria){
                 let mut nodo_vector = vector_categorias.get_mut(pos).unwrap();
                 nodo_vector.1 = nodo_vector.1.checked_add(1).ok_or("Error al sumar.")?;
             }
             else {
-                vector_categorias.push((categoria, 1, 0));
+                vector_categorias.push((categoria.clone(), 1, 0));
+                vector_puntuacion_total.push((categoria, 0))
             }
             return Ok(());
         }

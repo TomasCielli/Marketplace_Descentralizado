@@ -517,6 +517,7 @@ mod primer_contrato {
             if rol_del_usuario_en_compra == Rol::Comp{
                 self.calificar_vendedor(id_vendedor, calificacion)?;
                 orden_de_compra.calificaciones.0 = true;
+                orden_de_compra.puntuacion_del_comprador = Some(calificacion);
             }
             else {
                 self.calificar_comprador(id_comprador, calificacion)?;
@@ -1048,6 +1049,7 @@ mod primer_contrato {
     /// info_publicacion, tupla que almacena los datos de la publicación. (ID de la publicacion, Vec<(IDs de los productos, cantidades de ese producto)>, precio final de la publicacion, ID del Vendedor).
     /// id_comprador, almacena el id del comprador de la orden de compra. 
     /// calificaciones, es una tupla que indica si el vendor y/o comprador realizó la calificación a su contraparte. (vendedor, comprador)
+    /// puntuacion_del_comprador, almacena la calificacion dada por el comprador (una vez recibido)
     pub struct OrdenCompra{
         pub id: u32,
         pub estado: EstadoCompra,
@@ -1055,6 +1057,7 @@ mod primer_contrato {
         pub info_publicacion: (u32, Vec<(u32, u32)>, u32, AccountId),
         pub id_comprador:AccountId,
         pub calificaciones: (bool, bool),
+        pub puntuacion_del_comprador: Option<u8>,
     }
     impl OrdenCompra{
         
@@ -1073,6 +1076,7 @@ mod primer_contrato {
                 info_publicacion,
                 id_comprador, 
                 calificaciones,
+                puntuacion_del_comprador: None,
             }
         }
         
