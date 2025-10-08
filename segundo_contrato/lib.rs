@@ -8,6 +8,8 @@ mod segundo_contrato {
     use ink::storage::StorageVec;
     use ink::prelude::vec::Vec;
     use ink::prelude::string::{String, ToString};
+    use ink::env::call::FromAccountId;
+
 
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
@@ -23,14 +25,8 @@ mod segundo_contrato {
         // In `basic_contract_ref/lib.rs`
         
         #[ink(constructor)]
-        pub fn new(other_contract_code_hash: Hash) -> Self {
-
-            let marketplace = PrimerContratoRef::new()
-                .code_hash(other_contract_code_hash)
-                .endowment(0)
-                .salt_bytes([0xDE, 0xAD, 0xBE, 0xEF])
-                .instantiate();
-
+        pub fn new(primer_contrato_addr: AccountId) -> Self {
+            let marketplace = PrimerContratoRef::from_account_id(primer_contrato_addr);
             Self { marketplace }
         }
 
