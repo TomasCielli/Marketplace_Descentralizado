@@ -598,7 +598,7 @@ mod primer_contrato {
         pub fn get_productos(&self) -> Vec<Producto>{
             let mut vec_productos = Vec::new();
 
-            for i in 1..=self.dimension_logica_productos {
+            for i in 0..=self.dimension_logica_productos {
                 if let Some((producto, _stock)) = self.historial_productos.get(i) {
                     vec_productos.push(producto);
                 }
