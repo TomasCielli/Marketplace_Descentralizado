@@ -610,7 +610,7 @@ mod primer_contrato {
         pub fn get_usuarios(&self) -> Result<Vec<Usuario>, String>{
             let mut vec_usuarios= Vec::new();
             
-            for i in 0..self.vector_ids_usuarios.len(){
+            for i in 1..self.vector_ids_usuarios.len(){
                 vec_usuarios.push(self.buscar_usuario(self.buscar_id_usuario(i)?)?);
             }
             return Ok(vec_usuarios);
