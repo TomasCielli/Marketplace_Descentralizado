@@ -267,5 +267,4 @@ mod segundo_contrato {
 
 
     }
-
 }
