@@ -9,6 +9,8 @@ pub use self::primer_contrato::{
     OrdenCompra,
     Categoria,
     Producto,
+    Comprador,
+    Vendedor,
 };
 
 #[ink::contract]
@@ -584,6 +586,9 @@ mod primer_contrato {
             }
         }
 
+        /// Funcion que retorna el id del usuario en una posicion dada del vector vector_ids_usuarios
+        ///
+        /// Errores posibles: El id no se encuentra cargado en el sistema
         fn buscar_id_usuario(&self, pos: u32) -> Result<AccountId, String>{
             if let Some(id) = self.vector_ids_usuarios.get(pos){
                 return Ok(id)
@@ -595,7 +600,11 @@ mod primer_contrato {
         //Getters para el segundo contrato
         
         #[ink(message)]
+        /// Funcion que devuelve un vector con los productos en sistema
         pub fn get_productos(&self) -> Vec<Producto>{
+            self.priv_get_productos()
+        }
+        fn priv_get_productos(&self) -> Vec<Producto>{
             let mut vec_productos = Vec::new();
 
             for i in 0..=self.dimension_logica_productos {
@@ -607,7 +616,11 @@ mod primer_contrato {
         }
 
         #[ink(message)]
+        /// Funcion que devuelve un vector con los usuarios en sistema
         pub fn get_usuarios(&self) -> Result<Vec<Usuario>, String>{
+            self.priv_get_usuarios()
+        }
+        fn priv_get_usuarios(&self) -> Result<Vec<Usuario>, String>{
             let mut vec_usuarios= Vec::new();
             
             for i in 1..self.vector_ids_usuarios.len(){
@@ -617,7 +630,13 @@ mod primer_contrato {
         }
 
         #[ink(message)]
+        ///Funcion que devuelve un vector con las ordenes de compra en sistema.
+        ///
+        /// Errores posibles: No hay ordenes de compra en el sistema.
         pub fn get_ordenes(&self) -> Result<Vec<OrdenCompra>, String> {
+            self.priv_get_ordenes()
+        }
+        fn priv_get_ordenes(&self) -> Result<Vec<OrdenCompra>, String> {
             let mut vec_ordenes = Vec::new();
 
             for i in 0..self.historial_ordenes_de_compra.len() {
@@ -633,11 +652,6 @@ mod primer_contrato {
             }
         }
 
-    }
-    impl Default for PrimerContrato {
-        fn default() -> Self {
-            Self::new()
-        }
     }
        
 
