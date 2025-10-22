@@ -33,11 +33,16 @@ mod segundo_contrato {
 
         #[ink(message)]
         /// Funcion que retorna los cinco vendedores con mejor reputacion promedio.
+        #[cfg(not(test))]
         pub fn vendedores_mejor_reputacion(&self) -> Result <Vec <AccountId>, String>{
             self.priv_vendedores_mejor_reputacion()
         }
+        #[cfg(not(test))]
         fn priv_vendedores_mejor_reputacion(&self) -> Result<Vec<AccountId>, String>{
             let vendedores = self.filtrar_vendedores()?;
+           self.procesar_vendedores_mejor_reputacion(vendedores)
+        }
+        fn procesar_vendedores_mejor_reputacion(&self, vendedores: Vec<Usuario>) -> Result<Vec<AccountId>, String>{
             let vec_contador: Vec<(AccountId, u8)> = self.contar_promedios_vendedor(vendedores)?;
             
             let top5: Vec<AccountId> = self.calcular_5_mejores(vec_contador)?;
@@ -49,11 +54,16 @@ mod segundo_contrato {
         /// Funcion que retorna un vector con la longitud especificada en top, con los productos mas vendidos (id, cantidad).
         ///
         /// Errores posibles: No hay productos vendidos para procesar.
+        #[cfg(not(test))]
         pub fn productos_mas_vendidos(&self, top: Option<u32>) -> Result<Vec<(u32, u32)>, String>{
             self.priv_productos_mas_vendidos(top)
-        } 
+        }
+        #[cfg(not(test))]
         fn priv_productos_mas_vendidos(&self, top: Option<u32>) -> Result<Vec<(u32, u32)>, String>{
             let ordenes = self.marketplace.get_ordenes()?;
+            self.procesar_productos_mas_vendidos(ordenes, top)
+        }
+        fn procesar_productos_mas_vendidos(&self, ordenes: Vec<OrdenCompra>, top: Option<u32>) -> Result<Vec<(u32, u32)>, String>{
             let ordenes = self.filtrar_validas(ordenes);
             if ordenes.is_empty() {
                 return Err("No hay productos vendidos de ventas concretadas.".to_string())
@@ -76,11 +86,16 @@ mod segundo_contrato {
 
         #[ink(message)]
         /// Funcion que retorna los cinco compradores con mejor reputacion promedio.
+        #[cfg(not(test))]
         pub fn compradores_mejor_reputacion(&self) -> Result<Vec<AccountId>, String>{
             self.priv_compradores_mejor_reputacion()
         }
+        #[cfg(not(test))]
         fn priv_compradores_mejor_reputacion(&self) -> Result<Vec<AccountId>, String>{
             let compradores = self.filtrar_compradores()?;
+            self.procesar_compradores_mejor_reputacion(compradores)
+        }
+        fn procesar_compradores_mejor_reputacion(&self, compradores: Vec<Usuario>) -> Result<Vec<AccountId>, String>{
             let vec_contador: Vec<(AccountId, u8)> = self.contar_promedios_comprador(compradores)?;
             
             let top5: Vec<AccountId> = self.calcular_5_mejores(vec_contador)?;
@@ -92,11 +107,16 @@ mod segundo_contrato {
         /// Funcion que retorna un vector de tuplas con el id de los compradores y la cantidad de ordenes de compras realizadas por este. 
         /// En formato (id, cantidad)
         /// Errores posibles: No hay usuarios con datos para procesar
+        #[cfg(not(test))]
         pub fn cantidad_ordenes_por_usuarios(&self) -> Result<Vec<(AccountId, u32)>, String>{
             self.priv_cantidad_ordenes_por_usuarios()
         }
+        #[cfg(not(test))]
         fn priv_cantidad_ordenes_por_usuarios(&self) -> Result<Vec<(AccountId, u32)>, String>{
             let usuarios = self.marketplace.get_usuarios()?;
+            self.procesar_cantidad_ordenes_por_usuarios(usuarios)
+        }
+        fn procesar_cantidad_ordenes_por_usuarios(&self, usuarios: Vec<Usuario>) -> Result<Vec<(AccountId, u32)>, String>{
             let usuarios = self.filtrar_con_datos_comprador(usuarios);
 
             if usuarios.is_empty(){
@@ -111,21 +131,27 @@ mod segundo_contrato {
         #[ink(message)]
         /// Funcion que retorna un vector de tuplas, con cada categoria, su cantidad de ventas totales 
         /// y el promedio de calificaciones de cada uno de sus productos vendidos
+        #[cfg(not(test))]
         pub fn estadisticas_por_categoria(&self) -> Result< Vec< (Categoria, u32, u8)>, String>{
             self.priv_estadisticas_por_categoria()
         }
-        fn priv_estadisticas_por_categoria(&self) -> Result< Vec< (Categoria, u32, u8)>, String>{
+        #[cfg(not(test))]
+        fn priv_estadisticas_por_categoria(&self) -> Result<Vec<(Categoria, u32, u8)>, String>{
             let ordenes = self.marketplace.get_ordenes()?;
-            let ordenes = self.filtrar_validas(ordenes);
             let productos = self.marketplace.get_productos();
+            self.procesar_estadisticas_por_categoria(ordenes, productos)
+        }
+        fn procesar_estadisticas_por_categoria(&self, ordenes: Vec<OrdenCompra>, productos: Vec<Producto>) -> Result<Vec<(Categoria, u32, u8)>, String> {
+            let ordenes = self.filtrar_validas(ordenes);
             let mut vector_categorias: Vec<(Categoria, u32, u8)> = Vec::new();
             let mut vector_puntuacion_total: Vec<(Categoria, u32)> = Vec::new();
-
-            let _ = self.total_de_ventas_categorias(ordenes.clone(), productos.clone(), &mut vector_categorias, &mut vector_puntuacion_total)?;
-            let _ = self.calificacion_promedio_categorias(&mut vector_categorias, vector_puntuacion_total)?;
-
-            return Ok(vector_categorias)
+            
+            self.total_de_ventas_categorias(ordenes, productos, &mut vector_categorias, &mut vector_puntuacion_total)?;
+            self.calificacion_promedio_categorias(&mut vector_categorias, vector_puntuacion_total)?;
+            
+            Ok(vector_categorias)
         }
+
 
         /// Funcion que calcula el promedio de calificacion de cada una de las categorias.
         /// Divide la calificacion total por la cantidad total de ventas de la categoria.
@@ -248,28 +274,31 @@ mod segundo_contrato {
         }
         
         /// Funcion que filtra un listado de usuario, dejando solo aquellos que tengan el rol "Comp" o "Ambos" 
-        fn filtrar_compradores(&self) -> Result<Vec<Usuario>,String> {
+        fn filtrar_compradores(&self) -> Result<Vec<Usuario>, String> {
             let usuarios = self.marketplace.get_usuarios()?;
-            let compradores: Vec<Usuario> = usuarios
+            Ok(self.filtrar_compradores_interno(usuarios))
+        }
+        fn filtrar_compradores_interno(&self, usuarios: Vec<Usuario>) -> Vec<Usuario> {
+            usuarios
                 .into_iter()
-                .filter(|usuario|{
-                    (usuario.rol == Rol::Comp) || (usuario.rol == Rol::Ambos)
-                })
-                .collect();
-            return Ok(compradores) 
+                .filter(|usuario| (usuario.rol == Rol::Comp) || (usuario.rol == Rol::Ambos))
+                .collect()
         }
 
         /// Funcion que filtra un listado de usuario, dejando solo aquellos que tengan el rol "Vend" o "Ambos"
-        fn filtrar_vendedores(&self) -> Result<Vec<Usuario>,String> {
+        fn filtrar_vendedores(&self) -> Result<Vec<Usuario>, String> {
             let usuarios = self.marketplace.get_usuarios()?;
-            let vendedores: Vec<Usuario> = usuarios
+            Ok(self.filtrar_vendedores_interno(usuarios))
+        }
+        fn filtrar_vendedores_interno(&self, usuarios: Vec<Usuario>) -> Vec<Usuario> {
+            usuarios
                 .into_iter()
-                .filter(|usuario|{
+                .filter(|usuario| {
                     (usuario.rol == Rol::Vend) || (usuario.rol == Rol::Ambos)
                 })
-                .collect();
-            return Ok(vendedores) 
+                .collect()
         }
+
 
         /// Funcion que retorna la nota promedio; como vendedor o como comprador, de un usuario
         fn promedio_reputacion(&self, puntajes: Vec<u8>) -> u8 {
@@ -324,14 +353,14 @@ mod segundo_contrato {
         }
     
         #[ink::test]
-        fn promedio_reputacion_empty_is_zero() {
+        fn promedio_reputacion_vacio() {
             let contrato = SegundoContrato::new(account(0));
             let v: Vec<u8> = Vec::new();
             assert_eq!(contrato.promedio_reputacion(v), 0);
         }
 
         #[ink::test]
-        fn promedio_reputacion_rounding_and_bounds() {
+        fn promedio_reputacion_redondeo() {
             let contrato = SegundoContrato::new(account(0));
             let v = vec![5u8, 4u8];
             assert_eq!(contrato.promedio_reputacion(v), 5u8);
@@ -341,7 +370,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn filtrar_validas_filters_pending_and_cancelled() {
+        fn filtrar_validas_pendientes_canceladas() {
             let contrato = SegundoContrato::new(account(0));
             let o1 = OrdenCompra { id: 1, estado: EstadoCompra::Pendiente, cancelacion: (false, false), info_publicacion: (0, Vec::new(), 0, account(1)), id_comprador: account(2), calificaciones: (false, false), puntuacion_del_comprador: None };
             let o2 = OrdenCompra { id: 2, estado: EstadoCompra::Enviado, cancelacion: (false, false), info_publicacion: (0, Vec::new(), 0, account(1)), id_comprador: account(2), calificaciones: (false, false), puntuacion_del_comprador: None };
@@ -354,7 +383,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn procesar_orden_pushes_new_products() {
+        fn procesar_orden_pushea_nuevo_prod() {
             let contrato = SegundoContrato::new(account(0));
             let mut counter: Vec<(u32, u32)> = Vec::new();
             let pub_info = (1u32, vec![(10u32, 2u32), (20u32, 3u32)], 0u32, account(1));
@@ -366,7 +395,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn contar_cantidades_counts_orders_per_user() {
+        fn contar_cantidades_por_usuario() {
             let contrato = SegundoContrato::new(account(0));
             let u1 = Usuario { id_usuario: account(1), nombre: String::from("a"), apellido: String::from("b"), direccion: String::from("c"), email: String::from("e"), rol: Rol::Comp, datos_comprador: Some(Comprador { ordenes_de_compra: vec![1,2,3], reputacion_como_comprador: vec![] }), datos_vendedor: None };
             let u2 = Usuario { id_usuario: account(2), nombre: String::from("x"), apellido: String::from("y"), direccion: String::from("z"), email: String::from("e2"), rol: Rol::Comp, datos_comprador: Some(Comprador { ordenes_de_compra: vec![10], reputacion_como_comprador: vec![] }), datos_vendedor: None };
@@ -377,7 +406,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn calcular_5_mejores_returns_top5() {
+        fn calcular_5_mejores_devuelve_top5() {
             let contrato = SegundoContrato::new(account(0));
             let mut v: Vec<(AccountId, u8)> = Vec::new();
             for i in 1..8u8 {
@@ -390,7 +419,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn contar_categoria_and_puntuacion_and_promedio() {
+        fn contar_categoria_puntuacion_promedio() {
             let contrato = SegundoContrato::new(account(0));
 
             let p1 = Producto { id: 1, nombre: String::from("p1"), descripcion: String::from("d"), precio: 10, categoria: Categoria::Alimentos };
@@ -412,7 +441,7 @@ mod segundo_contrato {
         }
 
         #[ink::test]
-        fn contar_promedios_vendedor_and_comprador() {
+        fn contar_promedios_vendedor_comprador() {
             let contrato = SegundoContrato::new(account(0));
 
             let vdata = Vendedor { productos: vec![], publicaciones: vec![], reputacion_como_vendedor: vec![5,4,3] };
@@ -427,5 +456,642 @@ mod segundo_contrato {
             assert_eq!(res_c.len(), 1);
             assert_eq!(res_c[0].0, account(11));
         }
+
+    fn crear_vendedor_con_reputacion(id: u8, reputacion: Vec<u8>) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: format!("Vendedor {}", id),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: format!("vend{}@test.com", id),
+            rol: Rol::Vend,
+            datos_comprador: None,
+            datos_vendedor: Some(Vendedor {
+                productos: vec![],
+                publicaciones: vec![],
+                reputacion_como_vendedor: reputacion,
+            }),
+        }
     }
+
+    fn crear_ambos_con_reputacion(id: u8, reputacion: Vec<u8>) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: format!("Ambos {}", id),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: format!("ambos{}@test.com", id),
+            rol: Rol::Ambos,
+            datos_comprador: Some(Comprador {
+                ordenes_de_compra: vec![],
+                reputacion_como_comprador: vec![],
+            }),
+            datos_vendedor: Some(Vendedor {
+                productos: vec![],
+                publicaciones: vec![],
+                reputacion_como_vendedor: reputacion,
+            }),
+        }
+    }
+
+    fn crear_comprador(id: u8) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: format!("Comprador {}", id),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: format!("comp{}@test.com", id),
+            rol: Rol::Comp,
+            datos_comprador: Some(Comprador {
+                ordenes_de_compra: vec![],
+                reputacion_como_comprador: vec![],
+            }),
+            datos_vendedor: None,
+        }
+    }
+
+    #[ink::test]
+    fn test_filtrar_vendedores_interno_solo_vendedores() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let usuarios = vec![
+            crear_vendedor_con_reputacion(1, vec![]),
+            crear_comprador(2),
+            crear_vendedor_con_reputacion(3, vec![]),
+        ];
+        
+        let result = contrato.filtrar_vendedores_interno(usuarios);
+        
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|u| matches!(u.rol, Rol::Vend)));
+    }
+
+    #[ink::test]
+    fn test_filtrar_vendedores_interno_con_ambos() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let usuarios = vec![
+            crear_vendedor_con_reputacion(1, vec![]),
+            crear_ambos_con_reputacion(2, vec![]),
+            crear_comprador(3),
+        ];
+        
+        let result = contrato.filtrar_vendedores_interno(usuarios);
+        
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().any(|u| u.rol == Rol::Vend));
+        assert!(result.iter().any(|u| u.rol == Rol::Ambos));
+        assert!(!result.iter().any(|u| u.rol == Rol::Comp));
+    }
+
+    #[ink::test]
+    fn test_filtrar_vendedores_interno_vacio() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let usuarios = vec![
+            crear_comprador(1),
+            crear_comprador(2),
+        ];
+        
+        let result = contrato.filtrar_vendedores_interno(usuarios);
+        
+        assert!(result.is_empty());
+    }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_top5() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![
+            crear_vendedor_con_reputacion(1, vec![5, 5, 5]), 
+            crear_vendedor_con_reputacion(2, vec![4, 4, 4]),
+            crear_vendedor_con_reputacion(3, vec![3, 3, 3]),
+            crear_vendedor_con_reputacion(4, vec![2, 2, 2]),
+            crear_vendedor_con_reputacion(5, vec![1, 1, 1]), 
+            crear_vendedor_con_reputacion(6, vec![5, 5, 5]), 
+        ];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 5);
+        assert!(result.contains(&account(1)));
+        assert!(result.contains(&account(6)));
+        assert_eq!(result[2], account(2));
+        assert_eq!(result[3], account(3));
+        assert_eq!(result[4], account(4));
+        assert!(!result.contains(&account(5)));
+        }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_con_ambos() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![
+            crear_vendedor_con_reputacion(1, vec![5, 4]),
+            crear_ambos_con_reputacion(2, vec![5, 5, 5]),
+            crear_vendedor_con_reputacion(3, vec![3, 3, 4]), 
+        ];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 3);
+        assert!(result.contains(&account(1)));
+        assert!(result.contains(&account(2)));
+        assert!(result.contains(&account(3)));
+    }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_pocos_vendedores() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![
+            crear_vendedor_con_reputacion(1, vec![5, 4, 3]),
+            crear_vendedor_con_reputacion(2, vec![2, 2, 3]),
+        ];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], account(1));
+        assert_eq!(result[1], account(2));
+    }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_un_solo_vendedor() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![
+            crear_vendedor_con_reputacion(1, vec![5, 5, 5, 4]),
+        ];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], account(1));
+    }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_sin_reputacion() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![
+            crear_vendedor_con_reputacion(1, vec![]),
+            crear_vendedor_con_reputacion(2, vec![]),
+        ];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&account(1)));
+        assert!(result.contains(&account(2)));
+    }
+
+    #[ink::test]
+    fn test_procesar_vendedores_mejor_reputacion_vacio() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let vendedores = vec![];
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert!(result.is_empty());
+    }
+
+    #[ink::test]
+    fn test_flujo_completo_vendedores_mejor_reputacion() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let usuarios = vec![
+            crear_vendedor_con_reputacion(1, vec![5, 5, 5]),    
+            crear_comprador(2),                         
+            crear_ambos_con_reputacion(3, vec![4, 4, 5]),      
+            crear_vendedor_con_reputacion(4, vec![3, 3, 3]),    
+            crear_comprador(5),                          
+            crear_vendedor_con_reputacion(6, vec![5, 4, 5]),  
+        ];
+    
+        let vendedores = contrato.filtrar_vendedores_interno(usuarios);
+        assert_eq!(vendedores.len(), 4);
+        
+        let result = contrato.procesar_vendedores_mejor_reputacion(vendedores).unwrap();
+        
+        assert_eq!(result.len(), 4);
+        assert!(result[0] == account(1) || result[0] == account(6));
+        assert!(result[1] == account(1) || result[1] == account(6));
+        assert_eq!(result[2], account(3));
+        assert_eq!(result[3], account(4));
+    }
+
+    fn crear_orden_valida(id: u32, productos: Vec<(u32, u32)>) -> OrdenCompra {
+        OrdenCompra {
+            id,
+            estado: EstadoCompra::Recibido,
+            cancelacion: (false, false),
+            info_publicacion: (id, productos, 100, account(1)),
+            id_comprador: account(2),
+            calificaciones: (false, false),
+            puntuacion_del_comprador: None,
+        }
+    }
+
+    fn crear_orden_pendiente(id: u32, productos: Vec<(u32, u32)>) -> OrdenCompra {
+        OrdenCompra {
+            id,
+            estado: EstadoCompra::Pendiente,
+            cancelacion: (false, false),
+            info_publicacion: (id, productos, 100, account(1)),
+            id_comprador: account(2),
+            calificaciones: (false, false),
+            puntuacion_del_comprador: None,
+        }
+    }
+
+    fn crear_orden_cancelada(id: u32, productos: Vec<(u32, u32)>) -> OrdenCompra {
+        OrdenCompra {
+            id,
+            estado: EstadoCompra::Cancelada,
+            cancelacion: (false, false),
+            info_publicacion: (id, productos, 100, account(1)),
+            id_comprador: account(2),
+            calificaciones: (false, false),
+            puntuacion_del_comprador: None,
+        }
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_sin_top() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 2), (20, 3)]),
+            crear_orden_valida(2, vec![(10, 1), (30, 5)]),
+            crear_orden_valida(3, vec![(20, 2)]),      
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None).unwrap();
+        
+        assert_eq!(result.len(), 5);
+        assert_eq!(result[0], (20, 5));
+        assert_eq!(result[1], (30, 5)); 
+        assert_eq!(result[2], (10, 3)); 
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_con_top() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 5)]),
+            crear_orden_valida(2, vec![(20, 4)]),
+            crear_orden_valida(3, vec![(30, 3)]),
+            crear_orden_valida(4, vec![(40, 2)]),
+            crear_orden_valida(5, vec![(50, 1)]),
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, Some(3)).unwrap();
+        
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], (10, 5));
+        assert_eq!(result[1], (20, 4)); 
+        assert_eq!(result[2], (30, 3));
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_filtra_ordenes_invalidas() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 5)]),       
+            crear_orden_pendiente(2, vec![(20, 3)]),       
+            crear_orden_valida(3, vec![(30, 2)]),          
+            crear_orden_cancelada(4, vec![(40, 4)]),    
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None).unwrap();
+        
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], (10, 5));
+        assert_eq!(result[1], (30, 2));
+        assert!(!result.iter().any(|(id, _)| *id == 20 || *id == 40));
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_agrupa_multiples_ordenes() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 2)]),  
+            crear_orden_valida(2, vec![(10, 3)]),  
+            crear_orden_valida(3, vec![(10, 1)]),  
+            crear_orden_valida(4, vec![(20, 4)]), 
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None).unwrap();
+        
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0], (10, 6)); 
+        assert_eq!(result[1], (10, 5));
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_vacio() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None);
+        
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "No hay productos vendidos de ventas concretadas.");
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_solo_ordenes_invalidas() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_pendiente(1, vec![(10, 5)]),
+            crear_orden_cancelada(2, vec![(20, 3)]),
+            crear_orden_pendiente(3, vec![(30, 2)]),
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None);
+        
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "No hay productos vendidos de ventas concretadas.");
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_top_mayor_a_cantidad() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 2)]),
+            crear_orden_valida(2, vec![(20, 1)]),
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, Some(5)).unwrap();
+        
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], (10, 2));
+        assert_eq!(result[1], (20, 1));
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_empate_cantidades() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 5)]),
+            crear_orden_valida(2, vec![(20, 5)]),
+            crear_orden_valida(3, vec![(30, 3)]),
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, None).unwrap();
+        
+        assert_eq!(result.len(), 3);
+        assert!(result[0].1 == 5);
+        assert!(result[1].1 == 5);
+        assert_eq!(result[2], (30, 3));
+    }
+
+    #[ink::test]
+    fn test_procesar_productos_mas_vendidos_top_cero() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(10, 5)]),
+            crear_orden_valida(2, vec![(20, 3)]),
+        ];
+        
+        let result = contrato.procesar_productos_mas_vendidos(ordenes, Some(0)).unwrap();
+        
+        assert!(result.is_empty());
+    }
+
+    fn crear_comprador_con_reputacion(id: u8, reputacion: Vec<u8>) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: "Test".to_string(),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: "test@test.com".to_string(),
+            rol: Rol::Comp,
+            datos_comprador: Some(Comprador { 
+                ordenes_de_compra: vec![], 
+                reputacion_como_comprador: reputacion 
+            }),
+            datos_vendedor: None,
+        }
+    }
+
+
+
+   
+
+    fn crear_vendedor(id: u8) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: "Test".to_string(),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: "test@test.com".to_string(),
+            rol: Rol::Vend,
+            datos_comprador: None,
+            datos_vendedor: Some(Vendedor { productos: vec![], publicaciones: vec![], reputacion_como_vendedor: vec![] }),
+        }
+    }
+
+    #[ink::test]
+    fn test_filtrar_compradores_interno_basico() {
+        let contrato = SegundoContrato::new(account(0));
+        let usuarios = vec![crear_comprador(1), crear_vendedor(2)];
+        let result = contrato.filtrar_compradores_interno(usuarios);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id_usuario, account(1));
+    }
+
+    #[ink::test]
+    fn test_procesar_compradores_mejor_reputacion_basico() {
+        let contrato = SegundoContrato::new(account(0));
+        let compradores = vec![
+            crear_comprador(1,),
+            crear_comprador(2,),
+        ];
+        let result = contrato.procesar_compradores_mejor_reputacion(compradores).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], account(1));
+    }
+
+    #[ink::test]
+    fn test_procesar_compradores_mejor_reputacion_top5() {
+    let contrato = SegundoContrato::new(account(0));
+    
+    let compradores = vec![
+        {
+            let mut comp = crear_comprador_simple(1);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![1];
+            comp
+        },
+        {
+            let mut comp = crear_comprador_simple(2);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![2];
+            comp
+        },
+        {
+            let mut comp = crear_comprador_simple(3);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![3];
+            comp
+        },
+        {
+            let mut comp = crear_comprador_simple(4);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![4];
+            comp
+        },
+        {
+            let mut comp = crear_comprador_simple(5);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![5]; 
+            comp
+        },
+        {
+            let mut comp = crear_comprador_simple(6);
+            comp.datos_comprador.as_mut().unwrap().reputacion_como_comprador = vec![6];
+            comp
+        },
+    ];
+    
+    let result = contrato.procesar_compradores_mejor_reputacion(compradores).unwrap();
+    
+    assert_eq!(result.len(), 5);
+    assert!(!result.contains(&account(1)));
+    assert!(result.contains(&account(6)));
+    }
+
+    fn crear_comprador_simple(id: u8) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: "Test".to_string(),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: "test@test.com".to_string(),
+            rol: Rol::Comp,
+            datos_comprador: Some(Comprador { 
+                ordenes_de_compra: vec![], 
+                reputacion_como_comprador: vec![] 
+            }),
+            datos_vendedor: None,
+        }
+    }
+
+    fn crear_vendedor_simple(id: u8) -> Usuario {
+        Usuario {
+            id_usuario: account(id),
+            nombre: "Test".to_string(),
+            apellido: "Test".to_string(),
+            direccion: "Dir".to_string(),
+            email: "test@test.com".to_string(),
+            rol: Rol::Vend,
+            datos_comprador: None,
+            datos_vendedor: Some(Vendedor { 
+                productos: vec![], 
+                publicaciones: vec![], 
+                reputacion_como_vendedor: vec![] 
+            }),
+        }
+    }
+
+
+
+    #[ink::test]
+    fn test_procesar_cantidad_ordenes_basico() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let mut comprador1 = crear_comprador_simple(1);
+        comprador1.datos_comprador.as_mut().unwrap().ordenes_de_compra = vec![1, 2, 3];
+        
+        let mut comprador2 = crear_comprador_simple(2);
+        comprador2.datos_comprador.as_mut().unwrap().ordenes_de_compra = vec![4];
+        
+        let usuarios = vec![comprador1, comprador2];
+        let result = contrato.procesar_cantidad_ordenes_por_usuarios(usuarios).unwrap();
+        
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&(account(1), 3)));
+        assert!(result.contains(&(account(2), 1)));
+    }
+
+
+
+    fn crear_producto(id: u32, categoria: Categoria) -> Producto {
+        Producto {
+            id,
+            nombre: "Test".to_string(),
+            descripcion: "Test".to_string(),
+            precio: 10,
+            categoria,
+        }
+    }
+
+    #[ink::test]
+    fn test_procesar_estadisticas_por_categoria_basico() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(1, 2)]),
+        ];
+        
+        let productos = vec![
+            crear_producto(1, Categoria::Alimentos),
+        ];
+        
+        let result = contrato.procesar_estadisticas_por_categoria(ordenes, productos).unwrap();
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (Categoria::Alimentos, 1, 0)); 
+    }
+
+    #[ink::test]
+    fn test_procesar_estadisticas_por_categoria_filtra_ordenes_invalidas() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(1, 2)]),
+            {
+                let mut orden = crear_orden_valida(2, vec![(2, 1)]);
+                orden.estado = EstadoCompra::Pendiente;
+                orden
+            },
+        ];
+        
+        let productos = vec![
+            crear_producto(1, Categoria::Alimentos),
+            crear_producto(2, Categoria::Electrodomesticos),
+        ];
+        
+        let result = contrato.procesar_estadisticas_por_categoria(ordenes, productos).unwrap();
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (Categoria::Alimentos, 1, 0));
+    }
+
+    #[ink::test]
+    fn test_procesar_estadisticas_por_categoria_promedio() {
+        let contrato = SegundoContrato::new(account(0));
+        
+        let ordenes = vec![
+            crear_orden_valida(1, vec![(1, 1)],),
+            crear_orden_valida(2, vec![(1, 1)],),
+        ];
+        
+        let productos = vec![
+            crear_producto(1, Categoria::Alimentos),
+        ];
+        
+        let result = contrato.procesar_estadisticas_por_categoria(ordenes, productos).unwrap();
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (Categoria::Alimentos, 2, 0));
+    }
+
+}
 }

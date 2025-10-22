@@ -55,6 +55,7 @@ mod primer_contrato {
         /// La función agregar_usuario_sistema se encarga de registrar un usuario en mi sistema. 
         /// 
         /// Errores posibles: cuando el usuario ya está registrado. 
+        #[cfg(not(test))]
         pub fn agregar_usuario_sistema(&mut self, nombre: String, apellido: String, direccion: String, email: String, rol: Rol) -> Result <(), String>{
             let account_id = self.env().caller();
             self.priv_agregar_usuario_sistema(account_id, nombre, apellido, direccion, email, rol)
@@ -72,6 +73,7 @@ mod primer_contrato {
         
         #[ink(message)]
         /// La función "modificar_rol" permite al usuario cambiar su rol al recibido por parametro. 
+        #[cfg(not(test))]
         pub fn modificar_rol(&mut self, nuevo_rol: Rol) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_modificar_rol(account_id, nuevo_rol)
@@ -89,6 +91,7 @@ mod primer_contrato {
         /// el stock recibido por parametro es 0; 
         /// si el usuario tiene rol Comp.
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn cargar_producto(&mut self, nombre: String, descripcion: String, precio: u32, categoria: Categoria, stock: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_cargar_producto(account_id, nombre, descripcion, precio, categoria, stock)
@@ -97,13 +100,13 @@ mod primer_contrato {
             if precio == 0 { //<---- Desde. Correccion punto 12. 12/08
                 return Err("Precio no valido".to_string())
             }
-            if stock == 0{
+                if stock == 0 {
                 return Err("Stock no valido".to_string())
             } //<---- Hasta. 
-            let mut usuario = self.buscar_usuario(account_id)?;
+                let mut usuario = self.buscar_usuario(account_id)?;
             if (usuario.rol == Rol::Vend) | (usuario.rol == Rol::Ambos){
                 self.dimension_logica_productos = self.dimension_logica_productos.checked_add(1).ok_or("Error al sumar.")?;
-                self.historial_productos.insert(self.dimension_logica_productos, &(Producto::cargar_producto(self.dimension_logica_productos, nombre, descripcion, precio, categoria), stock));
+                    self.historial_productos.insert(self.dimension_logica_productos, &(Producto::cargar_producto(self.dimension_logica_productos, nombre, descripcion, precio, categoria), stock));
                 usuario.cargar_producto(self.dimension_logica_productos)?;
                 self.usuarios.insert(account_id, &usuario);
                 Ok(())
@@ -116,6 +119,7 @@ mod primer_contrato {
         /// La función "visualizar_productos_propios" devuelve un Vector de tuplas donde cada tupla tiene,
         /// en la posición 0, el ID del producto, y en la posición 1 el stock.
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn visualizar_productos_propios(&self) -> Result<Vec<(u32, u32)>, String>{
             let account_id = self.env().caller();
             self.priv_visualizar_productos_propios(account_id)
@@ -133,6 +137,7 @@ mod primer_contrato {
         /// 
         /// Errores posibles: cuando la cantidad de un producto a publicar es 0. 
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn crear_publicacion(&mut self, productos_a_publicar: Vec<(u32, u32)>) -> Result<(), String> {
             let account_id = self.env().caller();
             self.priv_crear_publicacion(account_id, productos_a_publicar)
@@ -179,6 +184,7 @@ mod primer_contrato {
         /// Cuando el usuario que quiere comprar una publicación, y es también el vendedor de la misma; 
         /// Cuando el usuario que creó la publicación y luego cambia de rol a Comp. 
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn crear_orden_de_compra(&mut self, id_publicacion: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_crear_orden_de_compra(account_id, id_publicacion)
@@ -215,6 +221,7 @@ mod primer_contrato {
         
         /// La función "cancelar_compra" se encarga de cancelar una compra.
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn cancelar_comprar(&mut self, id_orden: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_cancelar_compra(account_id, id_orden)
@@ -243,6 +250,7 @@ mod primer_contrato {
         /// Errores posibles: cuando el estado de la compra no es pendiente; 
         /// cuando el ID de la orden recibida por parametro no se halla en mi sistema (historial_ordenes_compra).
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn enviar_compra(&mut self, id_orden: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_enviar_compra(account_id, id_orden)
@@ -271,6 +279,7 @@ mod primer_contrato {
         /// Errores posibles: cuando el estado de la orden de compra no es enviado;
         /// cuando el ID de la orden recibida por parametro no se halla en mi sistema (historial_ordenes_compra).
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn recibir_compra(&mut self, id_orden: u32) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_recibir_compra(account_id, id_orden)
@@ -297,6 +306,7 @@ mod primer_contrato {
         /// 
         /// Errores posibles: cuando la calificación recibida por parametro se encuentra fuera de rango (rango = [1..5]).
         #[ink(message)]
+        #[cfg(not(test))]
         pub fn calificar (&mut self, id_orden:u32, calificacion: u8) -> Result<(), String>{
             let account_id = self.env().caller();
             self.priv_calificar(id_orden, calificacion, account_id)
@@ -1325,7 +1335,7 @@ mod tests {
             "ProductoX".to_string(),
             "Desc".to_string(),
             0, 
-            "Categoria".to_string(),
+            Categoria::Otro,
             10,
         );
 
@@ -1352,7 +1362,7 @@ mod tests {
             "ProductoY".to_string(),
             "Desc".to_string(),
             100,
-            "Categoria".to_string(),
+            Categoria::Otro,
             0, 
         );
 
@@ -1370,7 +1380,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             100,
-            "Categoria".to_string(),
+            Categoria::Otro,
             5,
         );
 
@@ -1397,7 +1407,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             200,
-            "Categoria".to_string(),
+            Categoria::Otro,
             5,
         );
 
@@ -1424,7 +1434,7 @@ mod tests {
             "ProductoZ".to_string(),
             "Descripcion Z".to_string(),
             500,
-            "Categoria Z".to_string(),
+            Categoria::Otro,
             15,
         );
 
@@ -1506,7 +1516,7 @@ mod tests {
             "Producto1".to_string(),
             "Desc".to_string(),
             100,
-            "Categoria".to_string(),
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1537,7 +1547,7 @@ mod tests {
             "Producto2".to_string(),
             "Desc".to_string(),
             150,
-            "Categoria".to_string(),
+            Categoria::Otro,
             8,
         ).unwrap();
 
@@ -1579,7 +1589,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             100,
-            "Cat".to_string(),
+            Categoria::Otro,
             10,
         ).unwrap();
 
@@ -1609,7 +1619,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             100,
-            "Cat".to_string(),
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1647,7 +1657,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             50,
-            "Cat".to_string(),
+            Categoria::Otro,
             3, 
         ).unwrap();
 
@@ -1676,7 +1686,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             200,
-            "Cat".to_string(),
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1718,7 +1728,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             100,
-            "Cat".to_string(),
+            Categoria::Otro,
             10,
         ).unwrap();
 
@@ -1752,7 +1762,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             50,
-            "Cat".to_string(),
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1794,7 +1804,7 @@ mod tests {
             "Producto".to_string(),
             "Desc".to_string(),
             100,
-            "Cat".to_string(),
+            Categoria::Otro,
             10,
         ).unwrap();
 
@@ -1825,8 +1835,8 @@ mod tests {
             usuario,
             "Prod".to_string(),
             "Desc".to_string(),
-            50,
-            "Cat".to_string(),
+            100,
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1866,7 +1876,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             30,
-            "Cat".to_string(),
+            Categoria::Otro,
             5,
         ).unwrap();
 
@@ -1908,7 +1918,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             20,
-            "Cat".to_string(),
+            Categoria::Otro,
             1,
         ).unwrap();
 
@@ -1943,7 +1953,7 @@ mod tests {
             "Prod".to_string(),
             "Desc".to_string(),
             15,
-            "Cat".to_string(),
+            Categoria::Otro,
             2,
         ).unwrap();
 
@@ -1988,7 +1998,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1, 2)]).unwrap(); // pub 0
 
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
@@ -2015,7 +2025,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap(); //5 productos alcemanados;
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap(); //5 productos alcemanados;
         contrato.priv_crear_publicacion(vendedor, vec![(1, 2)]).unwrap(); //3 productos almcenados;
 
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap(); //1 producto almacenado. (Restockeo automatico de la publicacion);
@@ -2055,7 +2065,7 @@ mod tests {
 
         contrato.priv_agregar_usuario_sistema(vendedor, "V".into(), "V".into(), "D".into(), "v@mail".into(), Rol::Vend).unwrap();
         contrato.priv_agregar_usuario_sistema(comprador, "C".into(), "C".into(), "D".into(), "c@mail".into(), Rol::Comp).unwrap();
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
 
@@ -2092,7 +2102,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
 
@@ -2140,7 +2150,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
 
@@ -2166,7 +2176,7 @@ mod tests {
             otro, "O".into(), "O".into(), "Dir".into(), "o@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
         contrato.priv_enviar_compra(vendedor, 0).unwrap();
@@ -2189,7 +2199,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
         contrato.priv_enviar_compra(vendedor, 0).unwrap();
@@ -2215,7 +2225,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
         contrato.priv_enviar_compra(vendedor, 0).unwrap();
@@ -2239,7 +2249,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
         contrato.priv_enviar_compra(vendedor, 0).unwrap();
@@ -2264,7 +2274,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
 
@@ -2282,7 +2292,7 @@ mod tests {
             vendedor, "V".into(), "V".into(), "Dir".into(), "v@mail".into(), Rol::Vend
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
 
         let account_invalido: AccountId = [0x0; 32].into();
@@ -2308,7 +2318,7 @@ mod tests {
             otro, "O".into(), "O".into(), "Dir".into(), "o@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 5).unwrap();
+    contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 5).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
         contrato.priv_enviar_compra(vendedor, 0).unwrap();
@@ -2454,7 +2464,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        instance.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+    instance.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         instance.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
 
         instance.priv_crear_orden_de_compra(comprador, 0).unwrap();
@@ -2481,7 +2491,7 @@ mod tests {
                 comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
             ).unwrap();
 
-            instance.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+            instance.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
             instance.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
 
             let result = instance.priv_enviar_compra(vendedor, 999); 
@@ -2564,7 +2574,7 @@ mod tests {
         ).unwrap();
 
         contrato.priv_cargar_producto(
-            vendedor, "Producto".into(), "Desc".into(), 100, "Cat".into(), 5
+            vendedor, "Producto".into(), "Desc".into(), 100, Categoria::Otro, 5
         ).unwrap();
 
         contrato.priv_crear_publicacion(vendedor, vec![(1, 2)]).unwrap(); 
@@ -2716,7 +2726,7 @@ mod tests {
             comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
         ).unwrap();
 
-        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, "cat".into(), 3).unwrap();
+        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 10, Categoria::Otro, 3).unwrap();
         contrato.priv_crear_publicacion(vendedor, vec![(1,1)]).unwrap();
         contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
 
@@ -2730,6 +2740,156 @@ mod tests {
 
         let comprador_actual = contrato.buscar_usuario(comprador).unwrap();
         assert_eq!(comprador_actual.datos_comprador.unwrap().reputacion_como_comprador.last().copied(), Some(4));
+    }
+
+    #[ink::test]
+    fn get_productos_vacio() {
+        let contrato = PrimerContrato::new();
+        let productos = contrato.get_productos();
+        assert!(productos.is_empty());
+    }
+
+    #[ink::test]
+    fn get_productos_retorna_producto_cargado() {
+        let mut contrato = PrimerContrato::new();
+        let acc = account(80);
+
+        contrato.priv_agregar_usuario_sistema(
+            acc,
+            "Vendedor".to_string(),
+            "Uno".to_string(),
+            "Dir".to_string(),
+            "v@mail".to_string(),
+            Rol::Vend,
+        ).unwrap();
+
+        contrato.priv_cargar_producto(
+            acc,
+            "ProductoTest".to_string(),
+            "Descripcion".to_string(),
+            123,
+            Categoria::Alimentos,
+            10,
+        ).unwrap();
+
+        let productos = contrato.get_productos();
+        assert_eq!(productos.len(), 1);
+        let p = &productos[0];
+        assert_eq!(p.id, 1);
+        assert_eq!(p.nombre, "ProductoTest".to_string());
+        assert_eq!(p.precio, 123);
+        assert_eq!(p.categoria, Categoria::Alimentos);
+    }
+
+    #[ink::test]
+    fn get_productos_varios_productos() {
+        let mut contrato = PrimerContrato::new();
+        let acc = account(81);
+
+        contrato.priv_agregar_usuario_sistema(
+            acc,
+            "Vendedor".to_string(),
+            "Dos".to_string(),
+            "Dir".to_string(),
+            "v2@mail".to_string(),
+            Rol::Vend,
+        ).unwrap();
+
+        contrato.priv_cargar_producto(acc, "P1".into(), "D1".into(), 10, Categoria::Hogar, 5).unwrap();
+        contrato.priv_cargar_producto(acc, "P2".into(), "D2".into(), 20, Categoria::Ropa, 2).unwrap();
+
+        let productos = contrato.get_productos();
+        assert_eq!(productos.len(), 2);
+
+        let ids: Vec<u32> = productos.iter().map(|p| p.id).collect();
+        assert!(ids.contains(&1));
+        assert!(ids.contains(&2));
+    }
+
+    #[ink::test]
+    fn get_usuarios_vacio() {
+        let contrato = PrimerContrato::new();
+        let res = contrato.get_usuarios().unwrap();
+        assert!(res.is_empty());
+    }
+
+    #[ink::test]
+    fn get_usuarios_un_solo_usuario_devuelve_vacio() {
+        let mut contrato = PrimerContrato::new();
+        let a1 = account(90);
+        contrato.priv_agregar_usuario_sistema(
+            a1,
+            "Uno".into(),
+            "A".into(),
+            "Dir".into(),
+            "u1@mail".into(),
+            Rol::Vend,
+        ).unwrap();
+
+        let res = contrato.get_usuarios().unwrap();
+        assert!(res.is_empty());
+    }
+
+    #[ink::test]
+    fn get_usuarios_dos_usuarios_devuelve_el_segundo() {
+        let mut contrato = PrimerContrato::new();
+        let a1 = account(91);
+        let a2 = account(92);
+
+        contrato.priv_agregar_usuario_sistema(
+            a1,
+            "Uno".into(),
+            "A".into(),
+            "Dir".into(),
+            "u1@mail".into(),
+            Rol::Vend,
+        ).unwrap();
+
+        contrato.priv_agregar_usuario_sistema(
+            a2,
+            "Dos".into(),
+            "B".into(),
+            "Dir2".into(),
+            "u2@mail".into(),
+            Rol::Comp,
+        ).unwrap();
+
+        let res = contrato.get_usuarios().unwrap();
+    
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id_usuario, a2);
+    }
+
+    #[ink::test]
+    fn get_ordenes_vacio_err() {
+        let contrato = PrimerContrato::new();
+        let res = contrato.get_ordenes();
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), "No hay ordenes de compra cargadas.".to_string());
+    }
+
+    #[ink::test]
+    fn get_ordenes_retorna_ordenes_cargadas() {
+        let mut contrato = PrimerContrato::new();
+        let vendedor = account(60);
+        let comprador = account(61);
+
+        contrato.priv_agregar_usuario_sistema(
+            vendedor, "V".into(), "V".into(), "Dir".into(), "v@mail".into(), Rol::Vend
+        ).unwrap();
+        contrato.priv_agregar_usuario_sistema(
+            comprador, "C".into(), "C".into(), "Dir".into(), "c@mail".into(), Rol::Comp
+        ).unwrap();
+
+        contrato.priv_cargar_producto(vendedor, "P".into(), "D".into(), 100, Categoria::Otro, 10).unwrap();
+        contrato.priv_crear_publicacion(vendedor, vec![(1, 2)]).unwrap();
+
+        contrato.priv_crear_orden_de_compra(comprador, 0).unwrap();
+
+        let ordenes = contrato.get_ordenes().expect("Debería devolver las ordenes");
+        assert_eq!(ordenes.len(), 1);
+        assert_eq!(ordenes[0].id, 0);
+        assert_eq!(ordenes[0].id_comprador, comprador);
     }
 }
 
