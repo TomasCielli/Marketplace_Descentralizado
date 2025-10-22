@@ -25,36 +25,36 @@ Se espera que las entregas incluyan una implementación funcional, correctamente
 
 ---
 
-## [Contrato 1 – `MarketplacePrincipal` (Core funcional + reputación)](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs)
+## Contrato 1 – `MarketplacePrincipal` (Core funcional + reputación)
 
 ### Funcionalidades
 
 #### 👤 Registro y gestión de usuarios
-- [Registro de usuario con rol: `Comprador`, `Vendedor` o ambos.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L43)
-- [Posibilidad de modificar roles posteriores.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L62)
+- Registro de usuario con rol: `Comprador`, `Vendedor` o ambos.
+- Posibilidad de modificar roles posteriores.
 
 #### 📦 Publicación de productos
-- [Publicar producto con nombre, descripción, precio, cantidad y categoría.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L120)
-- [Solo disponible para usuarios con rol `Vendedor`.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L130)
-- [Visualización de productos propios.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L101)
+- Publicar producto con nombre, descripción, precio, cantidad y categoría.
+- Solo disponible para usuarios con rol `Vendedor`.
+- Visualización de productos propios.
 
 #### 🛒 Compra y órdenes
-- [Crear orden de compra (solo `Compradores`).](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L169)
-- [Al comprar: se crea la orden y se descuenta stock.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L189)
-- [Estados de orden: `pendiente`, `enviado`, `recibido`, `cancelada`.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L1063)
-- [Solo el `Vendedor` puede marcar como `enviado`.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L233)
-- Solo el `Comprador` puede marcar como [`recibido`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L263) o [`cancelada`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L204) si aún está [`pendiente`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L211).
-- [Cancelación requiere consentimiento mutuo.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L994)
+- Crear orden de compra (solo `Compradores`).
+- Al comprar: se crea la orden y se descuenta stock.
+- Estados de orden: `pendiente`, `enviado`, `recibido`, `cancelada`.
+- Solo el `Vendedor` puede marcar como `enviado`.
+- Solo el `Comprador` puede marcar como `recibido` o `cancelada` si aún está `pendiente`.
+- Cancelación requiere consentimiento mutuo.
 
 #### ⭐ Reputación bidireccional
-- Cuando la orden esté [`recibida`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L298), ambas partes pueden [calificar](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L286):
-  - El `Comprador` [califica al `Vendedor`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L473).
-  - El `Vendedor` [califica al `Comprador`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L477).
-- [Calificación: entero del 1 al 5.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L291)
-- [Solo una calificación por parte y por orden.](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L484)
+- Cuando la orden esté `recibida`, ambas partes pueden calificar:
+  - El `Comprador` califica al `Vendedor`.
+  - El `Vendedor` califica al `Comprador`.
+- Calificación: entero del 1 al 5.
+- Solo una calificación por parte y por orden.
 - Reputación acumulada pública:
-  - [`reputacion_como_comprador`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L821)
-  - [`reputacion_como_vendedor`](https://github.com/TomasCielli/Marketplace_Descentralizado/blob/main/primer_contrato/lib.rs#L859)
+  - `reputacion_como_comprador`
+  - `reputacion_como_vendedor`
 
 ---
 
