@@ -633,7 +633,7 @@ mod primer_contrato {
         fn priv_get_usuarios(&self) -> Result<Vec<Usuario>, String>{
             let mut vec_usuarios= Vec::new();
             
-            for i in 1..self.vector_ids_usuarios.len(){
+            for i in 0..self.vector_ids_usuarios.len(){
                 vec_usuarios.push(self.buscar_usuario(self.buscar_id_usuario(i)?)?);
             }
             return Ok(vec_usuarios);
@@ -2814,23 +2814,6 @@ mod tests {
     }
 
     #[ink::test]
-    fn get_usuarios_un_solo_usuario_devuelve_vacio() {
-        let mut contrato = PrimerContrato::new();
-        let a1 = account(90);
-        contrato.priv_agregar_usuario_sistema(
-            a1,
-            "Uno".into(),
-            "A".into(),
-            "Dir".into(),
-            "u1@mail".into(),
-            Rol::Vend,
-        ).unwrap();
-
-        let res = contrato.get_usuarios().unwrap();
-        assert!(res.is_empty());
-    }
-
-    #[ink::test]
     fn get_usuarios_dos_usuarios_devuelve_el_segundo() {
         let mut contrato = PrimerContrato::new();
         let a1 = account(91);
@@ -2856,8 +2839,8 @@ mod tests {
 
         let res = contrato.get_usuarios().unwrap();
     
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].id_usuario, a2);
+        assert_eq!(res.len(), 2);
+        assert_eq!(res[1].id_usuario, a2);
     }
 
     #[ink::test]
